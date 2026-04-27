@@ -27,8 +27,8 @@ signal.signal(signal.SIGTERM, exit_set_requested)
 
 #Pick the dataset on which to run experiments
 dataset = "cifar10"
-result_directory = "results_cifar10/results-data-" + dataset + "-final"
-plot_directory = "results_cifar10/results-plot-" + dataset + "-final" 
+result_directory = "results_cifar10/results-data-" + dataset + "-bandit-comp"
+plot_directory = "results_cifar10/results-plot-" + dataset + "-bandit-comp" 
 
 
 with tools.Context("cmdline", "info"):
@@ -59,10 +59,9 @@ params_cifar = {
   "learning-rate-decay-delta" :500 ,
   "weight-decay": 1e-2,
   "evaluation-delta": 20,
-  "nb-steps": 2000,
+  "nb-steps": 1000,
   "momentum-worker": 0.99,
   "numb-labels": 10,
-  "mimic-learning-phase": 400,
   "pre-aggregator": "nnm",
   "aggregator": "trmean",
 }
@@ -72,12 +71,10 @@ params_cifar = {
 nb_workers = 20
 model = "cnn_cifar_old"
 alpha = 1
-byzcounts = [3,0]
-nb_neighbors_list = [6]
-attacks=  ["ALIE", "FOE", "SF"]#
-nb_local_steps = [1, 3]
-params = params_common = params_cifar 
-rag = True
+nb_neighbors_list = [5]
+nb_local_steps = [1]
+params_common = params_cifar 
+sampling_methods = ["Uniform", "Bandit"]
 
 # Command maker helper
 def make_command(params):
@@ -86,25 +83,23 @@ def make_command(params):
   return tools.Command(cmd)
 
 # Jobs
-jobs  = tools.Jobs(args.result_directory, devices=args.devices, devmult=args.supercharge, seeds=[0,1])
+jobs  = tools.Jobs(args.result_directory, devices=args.devices, devmult=args.supercharge, seeds=[0])
 seeds = jobs.get_seeds()
 
 for nb_local in nb_local_steps:
-  for f in byzcounts:
-    for nb_neighbors in nb_neighbors_list:
-      for attack in attacks:
-        params = params_common.copy()
-        params["dataset"] = dataset
-        params["model"] = model
-        params["nb-workers"] = nb_workers
-        params["dirichlet-alpha"] = alpha
-        params["nb-decl-byz"] = params["nb-real-byz"] = f
-        params["nb-neighbors"] = nb_neighbors
-        params["attack"] = attack
-        params["b-hat"] = f
-        params["rag"] = rag
-        params["nb-local-steps"] = nb_local
-        jobs.submit(f"{dataset}-n_{nb_workers}-model_{model}-attack_{attack}-agg_{params['aggregator']}-neighbors_{params['nb-neighbors']}-f_{f}-alpha_{alpha}-b_hat_{params['b-hat']}_nb_local{nb_local}_lr_{params['learning-rate']}", make_command(params))
+  for nb_neighbors in nb_neighbors_list:
+    for method in sampling_methods:
+      params = params_common.copy()
+      params["dataset"] = dataset
+      params["model"] = model
+      params["nb-workers"] = nb_workers
+      params["dirichlet-alpha"] = alpha
+      params["nb-neighbors"] = nb_neighbors
+      params["nb-local-steps"] = nb_local
+      if method == "Bandit":
+        params["use-bandit"] = True
+      
+      jobs.submit(f"{dataset}-n_{nb_workers}-method_{method}-neighbors_{nb_neighbors}-alpha_{alpha}-nb_local{nb_local}", make_command(params))
 
 # Wait for the jobs to finish and close the pool
 jobs.wait(exit_is_requested)
@@ -119,15 +114,12 @@ if exit_is_requested():
 tools.success("Plotting results...")
 
 for nb_local in nb_local_steps:
-  for f in byzcounts:
-    for nb_neighbors in nb_neighbors_list:
-      plot = study.LinePlot()
-      for attack in attacks:
-        
-        name = f"{dataset}-n_{params['nb-workers']}-model_{model}-attack_{attack}-agg_{params['aggregator']}-neighbors_{nb_neighbors}-f_{f}-alpha_{alpha}-b_hat_{f}_nb_local{nb_local}_lr_{params['learning-rate']}"
-        brdl = misc.compute_avg_err_op(name, seeds, result_directory, "eval", ("Accuracy", "max"))
-        plot.include(brdl[0], "Accuracy", errs="-err", lalp=0.8)
-      legend = [f"(attack = {attack})" for attack in attacks]
-
-      plot.finalize(None, "Step number", "Test accuracy", xmin=0, xmax=params['nb-steps'], ymin=0.1, ymax=1.0, legend=legend)
-      plot.save(plot_directory + "/" + dataset + "_f=" + str(f) + "_model=" + str(model) + "_neighbors=" + str(nb_neighbors) +"_alpha="+str(alpha)+ ".pdf", xsize=3, ysize=1.5)
+  for nb_neighbors in nb_neighbors_list:
+    plot = study.LinePlot()
+    for method in sampling_methods:
+      name = f"{dataset}-n_{nb_workers}-method_{method}-neighbors_{nb_neighbors}-alpha_{alpha}-nb_local{nb_local}"
+      brdl = misc.compute_avg_err_op(name, seeds, result_directory, "eval", ("Accuracy", "max"))
+      plot.include(brdl[0], "Accuracy", errs="-err", lalp=0.8)
+    
+    plot.finalize(None, "Step number", "Test accuracy", xmin=0, xmax=params_common['nb-steps'], ymin=0.1, ymax=1.0, legend=sampling_methods)
+    plot.save(plot_directory + "/" + dataset + "_neighbors=" + str(nb_neighbors) +"_alpha="+str(alpha)+ "_bandit_comp.pdf", xsize=3, ysize=1.5)

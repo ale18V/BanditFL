@@ -180,6 +180,10 @@ def process_commandline():
 	parser.add_argument("--nb-local-steps",
 					 type=int, default=1,
 		help="Number of local steps to perform before aggregation")
+	parser.add_argument("--use-bandit",
+		action="store_true",
+		default=False,
+		help="Use bandit-based peer selection")
 	return parser.parse_args(sys.argv[1:])
 
 with tools.Context("cmdline", "info"):
@@ -269,7 +273,7 @@ with tools.Context("training", "info"):
 		#JS: Instantiate worker i
 		worker_i = P2PWorker(worker_id, train_loader_dict[worker_id], test_loader, args.nb_workers, args.nb_decl_byz, args.nb_real_byz, args.aggregator, args.pre_aggregator,
 					args.server_clip, args.bucket_size, args.model, args.learning_rate, args.learning_rate_decay, args.learning_rate_decay_delta, args.weight_decay,
-					args.loss, args.momentum_worker, args.device, labelflipping, args.gradient_clip, args.numb_labels, args.nb_neighbors, args.rag, args.b_hat, args.nb_local_steps)
+					args.loss, args.momentum_worker, args.device, labelflipping, args.gradient_clip, args.numb_labels, args.nb_neighbors, args.rag, args.b_hat, args.nb_local_steps, use_bandit=args.use_bandit)
 		if worker_id > 0:
 			#JS: Set model/parameters of worker i to those of worker 0
 			worker_i.model.load_state_dict(Workers[0].model.state_dict())

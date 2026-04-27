@@ -29,8 +29,8 @@ signal.signal(signal.SIGTERM, exit_set_requested)
 
 #JS: Pick the dataset on which to run experiments
 dataset = "mnist"
-result_directory = "results_mnist/results-data-" + dataset + "-iclr"
-plot_directory = "results_mnist/results-plot-" + dataset + "-iclr"
+result_directory = "results_mnist/results-data-" + dataset + "-bandit-comp"
+plot_directory = "results_mnist/results-plot-" + dataset + "-bandit-comp"
 
 
 with tools.Context("cmdline", "info"):
@@ -59,32 +59,20 @@ params_mnist = {
   "nb-steps": 200,
   "momentum-worker": 0.9,
   "numb-labels": 10,
-  "rag": True,
   "pre-aggregator": "nnm",
-  "aggregator" : "trmean", #"multi_krum", #
+  "aggregator" : "trmean",
   "evaluation-delta":20
 }
 
 
-# Hyperparameters to test #TODO not needed
-#alphas = ["1", "10"]
 
-nb_workers = 100 # 100#
+nb_workers = 30
 model = "cnn_mnist"
-#alpha = 0.5
 alpha = 1
-#byzcounts = [0,1,2,3,4]
-#byzcounts = [1,2,3,4,5]#,10]#,20,30,40,50]
-#b_hat_list = [1,2,3,4,5]
-byzcounts = [1,0] #[6,5,4] # 8 [ 8,10,]
-b_hat_list = [1,0]#[6,5,4] # 6
-#nb_neighbors_list = [8, 10, 12]
-nb_neighbors_list = [3,4,5]
-nb_local_steps = [1,3]#,3]# 2, 3, 4]
-#attacks = ["SF", "auto_ALIE", "auto_FOE"]
-attacks=["ALIE"]#["SF", "ALIE" , "FOE"]
+nb_neighbors_list = [3, 5]
+nb_local_steps = [1]
 params_common = params_mnist
-rag = True
+sampling_methods = ["Uniform", "Bandit"]
 
 # Command maker helper
 def make_command(params):
@@ -93,28 +81,24 @@ def make_command(params):
   return tools.Command(cmd)
 
 # Jobs
-jobs  = tools.Jobs(args.result_directory, devices=args.devices, devmult=args.supercharge, seeds=[0,1])
+jobs  = tools.Jobs(args.result_directory, devices=args.devices, devmult=args.supercharge, seeds=[0])
 seeds = jobs.get_seeds()
 
 
-#for i, f in enumerate(byzcounts):
 for nb_local in nb_local_steps:
-  for i,f in enumerate(byzcounts):
-    for nb_neighbors in nb_neighbors_list:
-      #nb_neighbors = nb_neighbors_list[i]
-      for attack in attacks:
-        params = params_common.copy()
-        params["dataset"] = dataset
-        params["model"] = model
-        params["nb-workers"] = nb_workers
-        params["dirichlet-alpha"] = alpha
-        params["nb-decl-byz"] = params["nb-real-byz"] = f
-        params["nb-neighbors"] = nb_neighbors
-        params["attack"] = attack
-        params["b-hat"] = b_hat_list[i]
-        params["rag"] = rag
-        params["nb-local-steps"] = nb_local
-        jobs.submit(f"{dataset}-n_{nb_workers}-model_{model}-attack_{attack}-agg_{params['aggregator']}-neighbors_{params['nb-neighbors']}-f_{f}-alpha_{alpha}-nb-local_{nb_local}", make_command(params))
+  for nb_neighbors in nb_neighbors_list:
+    for method in sampling_methods:
+      params = params_common.copy()
+      params["dataset"] = dataset
+      params["model"] = model
+      params["nb-workers"] = nb_workers
+      params["dirichlet-alpha"] = alpha
+      params["nb-neighbors"] = nb_neighbors
+      params["nb-local-steps"] = nb_local
+      if method == "Bandit":
+        params["use-bandit"] = True
+      
+      jobs.submit(f"{dataset}-n_{nb_workers}-method_{method}-neighbors_{nb_neighbors}-alpha_{alpha}-nb_local{nb_local}", make_command(params))
 
 # Wait for the jobs to finish and close the pool
 jobs.wait(exit_is_requested)
@@ -130,16 +114,12 @@ tools.success("Plotting results...")
 
 
 for nb_local in nb_local_steps:
-  for f in byzcounts:
-    for nb_neighbors in nb_neighbors_list:
-      plot = study.LinePlot()
-      for attack in attacks:
-        
-        name = f"{dataset}-n_{params['nb-workers']}-model_{model}-attack_{attack}-agg_{params['aggregator']}-neighbors_{nb_neighbors}-f_{f}-alpha_{alpha}-nb-local_{nb_local}"
-        brdl = misc.compute_avg_err_op(name, seeds, result_directory, "eval", ("Accuracy", "max"))
-        plot.include(brdl[0], "Accuracy", errs="-err", lalp=0.8)
-        #legend = [f"(f = {f})"]
-      legend = [f"(attack = {attack})" for attack in attacks]
-      plot.finalize(None, "Step number", "Test accuracy", xmin=0, xmax=params['nb-steps'], ymin=0.1, ymax=1.0, legend=legend)
-      #plot.save(plot_directory + "/" + dataset + "_f=" + str(f) + "_model=" + str(model) + "_attack=" + str(attack) + "_neighbors=" + str(nb_neighbors) + ".pdf", xsize=3, ysize=1.5)
-      plot.save(plot_directory + "/" + dataset + "_f=" + str(f) + "_model=" + str(model) + "_neighbors=" + str(nb_neighbors) + ".pdf", xsize=3, ysize=1.5)
+  for nb_neighbors in nb_neighbors_list:
+    plot = study.LinePlot()
+    for method in sampling_methods:
+      name = f"{dataset}-n_{nb_workers}-method_{method}-neighbors_{nb_neighbors}-alpha_{alpha}-nb_local{nb_local}"
+      brdl = misc.compute_avg_err_op(name, seeds, result_directory, "eval", ("Accuracy", "max"))
+      plot.include(brdl[0], "Accuracy", errs="-err", lalp=0.8)
+    
+    plot.finalize(None, "Step number", "Test accuracy", xmin=0, xmax=params_common['nb-steps'], ymin=0.1, ymax=1.0, legend=sampling_methods)
+    plot.save(plot_directory + "/" + dataset + "_neighbors=" + str(nb_neighbors) +"_alpha="+str(alpha)+ "_bandit_comp.pdf", xsize=3, ysize=1.5)
