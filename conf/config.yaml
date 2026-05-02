@@ -1,8 +1,10 @@
 defaults:
   - profile: cifar_dynamic
   - train: dynamic
-  - sweep: default
   - _self_
+
+seed: 0
+device: auto
 
 hydra:
   run:

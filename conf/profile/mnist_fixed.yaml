@@ -5,12 +5,12 @@ nb_workers: 30
 alpha: 1
 result_directory: results_mnist/results-data-mnist-fx
 plot_directory: results_mnist/results-plot-mnist-fx
-byzcounts: [6, 3, 0]
-b_hat_list: [6, 3, 0]
-nb_neighbors_list: [15]
-nb_local_steps: [1]
-attacks: [dissensus, ALIE, SF, FOE]
-method_values: [null]
+byzcount: 6
+b_hat: 6
+nb_neighbors: 15
+nb_local_steps: 1
+attack: dissensus
+method: cs+
 params_common:
   batch-size: 25
   loss: NLLLoss
@@ -21,4 +21,3 @@ params_common:
   pre-aggregator: nnm
   aggregator: trmean
   evaluation-delta: 20
-  method: cs+

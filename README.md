@@ -1,199 +1,73 @@
 # banditdl
 
-Hydra-driven experiments for Byzantine-resilient decentralized learning.
+Hydra-multirun experiments for Byzantine-resilient decentralized learning.
 
-## Quick Start
+## Setup
 
 ```bash
 uv sync
-uv run -m banditdl --cfg job
-uv run -m banditdl profile=cifar_dynamic
 ```
 
-## How To Run
+If `uv` cache is not writable in your environment:
 
-Default run (uses `conf/config.yaml` defaults):
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv sync
+```
+
+## Run One Experiment
 
 ```bash
 uv run -m banditdl
 ```
 
-Available built-in profiles:
+Example overrides:
 
 ```bash
-uv run -m banditdl profile=cifar_dynamic
-uv run -m banditdl profile=mnist_dynamic
-uv run -m banditdl profile=cifar_fixed
-uv run -m banditdl profile=mnist_fixed
+uv run -m banditdl profile=mnist_dynamic profile.nb_neighbors=5 profile.byzcount=1 seed=0
 ```
 
-Hydra multirun example:
+## Run Sweeps (Hydra Multirun)
+
+Hydra does the orchestration. No custom in-repo scheduler is used by the main entrypoint.
 
 ```bash
-uv run -m banditdl -m profile=mnist_dynamic profile.nb_neighbors_list='[3,4,5]'
+uv run -m banditdl -m \
+  profile=mnist_dynamic \
+  seed=0,1 \
+  profile.nb_neighbors=3,5 \
+  profile.attack=ALIE,SF \
+  profile.nb_local_steps=1,3
 ```
 
+## Existing Profiles
 
-## Runtime Architecture
+- `cifar_dynamic`
+- `mnist_dynamic`
+- `cifar_fixed`
+- `mnist_fixed`
 
-This section describes execution logic, not folder layout.
+## Hydra Parameters Handled
 
+Top-level:
+- `profile` (config group)
+- `train` (config group)
+- `seed`
+- `device`
 
-### Runtime Interaction Diagram
+`profile` fields:
+- `mode`: `dynamic` or `fixed`
+- `dataset`, `model`, `nb_workers`, `alpha`
+- `result_directory`, `plot_directory`
+- `byzcount`, `b_hat`
+- `nb_neighbors`, `nb_local_steps`
+- `attack`, `method`
+- `params_common` (forwarded as CLI args to training runner)
 
-```mermaid
-flowchart TD
-    A[User: uv run -m banditdl ...] --> B[banditdl.__main__]
-    B --> C[experiments.hydra_run]
-    C --> D[Hydra config composition
-conf/config.yaml + profile/train/sweep]
-    D --> E[experiments.common.run_sweep]
+`train` fields:
+- `train_program`: module path (`train_p2p` or `fx_train_p2p`)
+- `neighbor_sampler`: currently `uniform`
 
-    E --> F[core.tools.jobs.Jobs
-Job Scheduler]
-    E --> G[Command Builder
-python -m train module + CLI args]
-    G --> F
-
-    F --> H1[Job Runner Process
-experiments.train_p2p]
-    F --> H2[Job Runner Process
-experiments.fx_train_p2p]
-
-    H1 --> I1[data.*
-models + dataset loaders]
-    H1 --> J1[core.training.dynamic.worker
-local step + neighbor sampling]
-    J1 --> K1[core.robustness.*
-attacks + aggregators]
-
-    H2 --> I2[data.*
-models + dataset loaders]
-    H2 --> J2[core.training.fixed_graph.worker
-fixed-graph updates]
-    J2 --> K2[core.robustness.*
-attacks + summations]
-
-    H1 --> L[Per-job result directory
-(eval, eval_worst, logs)]
-    H2 --> L
-
-    L --> M[core.analysis.study + core.common
-load/reduce/plot]
-    M --> N[plots + aggregated summaries]
-```
-
-Read it as:
-- `run_sweep` defines the experiment Cartesian product.
-- `Jobs` is the scheduler/executor for seeds/devices.
-- `train_p2p` / `fx_train_p2p` are per-job runners started as subprocesses.
-
-### End-to-end Flow
-
-1. You launch `uv run -m banditdl ...`.
-2. `banditdl.__main__` dispatches to `banditdl.experiments.hydra_run`.
-3. Hydra loads config (`conf/config.yaml` + selected `profile/train/sweep`).
-4. `hydra_run` translates config into sweep jobs and calls `run_sweep(...)`.
-5. `run_sweep` creates a `Jobs` scheduler (parallel devices/seeds), then submits one training process per combination of:
-   - byzantine count
-   - neighbors
-   - attack
-   - local steps
-   - method (fixed-graph mode)
-   - seed
-6. Each job runs a training entrypoint module (`train_p2p` or `fx_train_p2p`) as a separate Python process.
-7. Training process builds workers, runs train/eval loop, writes results in its own result directory.
-8. After all jobs finish, `run_sweep` loads result files and generates plots.
-
-### Responsibilities By Runtime Module
-
-- `banditdl.experiments.hydra_run`
-  - Control-plane adapter between Hydra config and sweep engine.
-  - Defines how config fields map to training CLI parameters.
-
-- `banditdl.experiments.common`
-  - Sweep execution engine.
-  - Builds commands, schedules jobs, waits for completion, triggers plotting.
-
-- `banditdl.core.tools.jobs`
-  - Concurrent job runner.
-  - Handles seed replication, device assignment, subprocess execution, stdout/stderr capture.
-
-- `banditdl.experiments.train_p2p` (dynamic) and `banditdl.experiments.fx_train_p2p` (fixed)
-  - Per-job runtime script.
-  - Parses job CLI args, creates datasets/workers, performs iterative training/evaluation, persists metrics.
-
-- `banditdl.core.training.*`
-  - Worker logic and update rules.
-  - Dynamic/fixed communication behavior, aggregation calls, attack handling integration.
-
-- `banditdl.core.robustness.*`
-  - Attack implementations and robust aggregation/summation algorithms.
-
-- `banditdl.data.*`
-  - Dataset creation/partitioning and model instantiation.
-
-- `banditdl.core.sampling`
-  - Neighbor sampler strategy used by dynamic workers.
-  - Current baseline: uniform sampling.
-
-- `banditdl.core.analysis.study` + `banditdl.core.common`
-  - Result loading, reduction, plotting helpers used after job completion.
-
-### Interaction Contracts
-
-- **Hydra -> Sweep Engine**: structured config objects become explicit sweep loops and CLI parameter dictionaries.
-- **Sweep Engine -> Training Processes**: subprocess contract is pure CLI arguments; each run is isolated by result directory.
-- **Training -> Core Algorithms**: training entrypoints orchestrate, core modules compute.
-- **Core -> Data**: workers request models/data loaders, then operate on tensor updates/aggregation.
-- **Post-processing**: analysis reads generated result files only (no in-memory coupling with training processes).
-
-### Why This Split
-
-- Experiment iteration speed lives in config + orchestration.
-- Algorithm correctness and simulation behavior live in core/training/robustness.
-- Sampling research can evolve independently via `core.sampling` and training wiring.
-
-## Existing Setups In This Repo
-
-- `cifar_dynamic`: dynamic peer-to-peer CIFAR-10
-- `mnist_dynamic`: dynamic peer-to-peer MNIST
-- `cifar_fixed`: fixed-graph CIFAR-10 baseline
-- `mnist_fixed`: fixed-graph MNIST baseline
-
-Defined in `conf/profile/*.yaml`.
-
-## Hydra Configs and Parameters
-
-Top-level config groups:
-
-- `profile`: experiment definition (`conf/profile/*.yaml`)
-- `train`: trainer wiring and plotting selectors (`conf/train/*.yaml`)
-- `sweep`: runtime sweep settings (`conf/sweep/*.yaml`)
-
-Commonly used keys:
-
-- `profile.mode`: `dynamic` or `fixed`
-- `profile.dataset`: `mnist`, `cifar10`, etc.
-- `profile.model`: model name used by training scripts
-- `profile.nb_workers`: number of workers
-- `profile.alpha`: Dirichlet alpha
-- `profile.result_directory`, `profile.plot_directory`
-- `profile.byzcounts`: byzantine counts to sweep
-- `profile.b_hat_list`: optional per-`byzcounts` override
-- `profile.nb_neighbors_list`: neighbor counts to sweep
-- `profile.nb_local_steps`: local steps sweep
-- `profile.attacks`: attack names
-- `profile.method_values`: fixed-graph method sweep values (`null` for none)
-- `profile.params_common`: CLI params forwarded to train program
-- `train.train_program`: module path of training entry script
-- `train.neighbor_sampler`: current sampler selector (`uniform`)
-- `train.plot_location`, `train.plot_column`, `train.plot_reduction`
-- `sweep.seeds`: repeated seeds
-- `sweep.supercharge`: parallel jobs per device
-- `devices` (optional top-level override): `auto` or list/string of devices
-
-Inspect effective config:
+Inspect the resolved config:
 
 ```bash
 uv run -m banditdl --cfg job
@@ -201,23 +75,26 @@ uv run -m banditdl --cfg job
 
 ## How To Create A New Experiment
 
-1. Copy a profile file in `conf/profile/`, e.g. `mnist_dynamic.yaml` -> `mnist_bandit.yaml`.
-2. Edit the profile sweep space (`attacks`, `nb_neighbors_list`, `nb_local_steps`, `byzcounts`, `params_common`, etc.).
-3. Run it:
+1. Copy a profile in `conf/profile/`.
+2. Change scalar defaults (single run).
+3. Sweep with Hydra multirun by overriding fields with comma-separated values.
+
+Example:
 
 ```bash
-uv run -m banditdl profile=mnist_bandit
+uv run -m banditdl -m profile=my_new_profile profile.nb_neighbors=3,5,7 seed=0,1
 ```
 
-Optional: add a dedicated train config in `conf/train/` if you need a different training entrypoint.
+## Runtime Logic (Short)
 
-## Where To Modify Sampling / Bandits
+1. `uv run -m banditdl` -> `banditdl.__main__` -> `banditdl.experiments.hydra_run`.
+2. Hydra composes config from `conf/`.
+3. `hydra_run` builds one training command for that run.
+4. In multirun mode, Hydra launches many runs (one per parameter combination).
+5. Each run executes `train_p2p` or `fx_train_p2p` and writes result files.
 
-- Sampling implementation: `banditdl/core/sampling.py`
-- Training-time sampler wiring: `banditdl/experiments/train_p2p.py`
-- Dynamic worker sampler usage: `banditdl/core/training/dynamic/worker.py`
+## Sampling / Bandit Hook Points
 
-## Notes
-
-- Hydra run outputs: `.hydra_runs/...`
-- Hydra multirun outputs: `.hydra_multirun/...`
+- `banditdl/core/sampling.py`
+- `banditdl/experiments/train_p2p.py`
+- `banditdl/core/training/dynamic/worker.py`

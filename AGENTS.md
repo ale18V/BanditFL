@@ -12,11 +12,11 @@ This file records repository-specific engineering preferences and workflow rules
 ## Package/Layout Rules
 
 - The Python codebase lives under `banditdl/`.
-- Do not use a `src` package/module name inside the codebase.
 - Avoid ambiguous technical names in import paths when a clearer name is available.
 - Keep config files outside the Python package tree.
   - Use top-level `conf/` for Hydra configs.
 - Keep module boundaries straightforward and discoverable.
+- Follow the principles of software engineering of modularity, separation of responsabilities while not overcomplicating the codebase.
 
 ## Naming and Structure Preferences
 
