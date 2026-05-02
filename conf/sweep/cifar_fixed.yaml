@@ -1,0 +1,11 @@
+hydra:
+  sweeper:
+    params:
+      profile: cifar_fixed
+      train: fixed
+      seed: 0,1
+      profile.byzcount: 3,0
+      profile.nb_neighbors: 6
+      profile.attack: dissensus,ALIE,SF,FOE
+      profile.nb_local_steps: 3,1
+      profile.method: cs+,gts,cs_he

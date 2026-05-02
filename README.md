@@ -30,6 +30,19 @@ uv run -m banditdl profile=mnist_dynamic profile.nb_neighbors=5 profile.byzcount
 
 Hydra does the orchestration. No custom in-repo scheduler is used by the main entrypoint.
 
+### Option A: One-command preset sweep (matrix in config)
+
+```bash
+uv run -m banditdl -m sweep=cifar_dynamic
+uv run -m banditdl -m sweep=mnist_dynamic
+uv run -m banditdl -m sweep=cifar_fixed
+uv run -m banditdl -m sweep=mnist_fixed
+```
+
+Sweep presets are defined in `conf/sweep/*.yaml` through `hydra.sweeper.params`.
+
+### Option B: Ad-hoc sweep from CLI
+
 ```bash
 uv run -m banditdl -m \
   profile=mnist_dynamic \
@@ -51,6 +64,7 @@ uv run -m banditdl -m \
 Top-level:
 - `profile` (config group)
 - `train` (config group)
+- `sweep` (config group)
 - `seed`
 - `device`
 
@@ -67,7 +81,7 @@ Top-level:
 - `train_program`: module path (`train_p2p` or `fx_train_p2p`)
 - `neighbor_sampler`: currently `uniform`
 
-Inspect the resolved config:
+Inspect resolved config:
 
 ```bash
 uv run -m banditdl --cfg job
@@ -76,13 +90,26 @@ uv run -m banditdl --cfg job
 ## How To Create A New Experiment
 
 1. Copy a profile in `conf/profile/`.
-2. Change scalar defaults (single run).
-3. Sweep with Hydra multirun by overriding fields with comma-separated values.
+2. Change scalar defaults for a single-run baseline.
+3. For matrix sweeps, add a file in `conf/sweep/` with `hydra.sweeper.params`.
 
-Example:
+Example sweep preset:
+
+```yaml
+# conf/sweep/my_sweep.yaml
+hydra:
+  sweeper:
+    params:
+      profile: mnist_dynamic
+      seed: 0,1
+      profile.nb_neighbors: 3,5,7
+      profile.attack: ALIE,SF
+```
+
+Run it:
 
 ```bash
-uv run -m banditdl -m profile=my_new_profile profile.nb_neighbors=3,5,7 seed=0,1
+uv run -m banditdl -m sweep=my_sweep
 ```
 
 ## Runtime Logic (Short)

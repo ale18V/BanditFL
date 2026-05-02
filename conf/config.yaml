@@ -1,6 +1,7 @@
 defaults:
   - profile: cifar_dynamic
   - train: dynamic
+  - sweep: none
   - _self_
 
 seed: 0

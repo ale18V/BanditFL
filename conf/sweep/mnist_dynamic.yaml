@@ -1,0 +1,10 @@
+hydra:
+  sweeper:
+    params:
+      profile: mnist_dynamic
+      seed: 0,1
+      profile.byzcount: 1,0
+      profile.b_hat: 1,0
+      profile.nb_neighbors: 3,4,5
+      profile.attack: ALIE
+      profile.nb_local_steps: 1,3
