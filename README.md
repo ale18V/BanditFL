@@ -189,6 +189,17 @@ experiments.train_p2p]
 - `banditdl.core.sampling`
   - Neighbor sampling strategy used in dynamic worker mode.
 
+
+### Terminology: Worker = Node
+
+In this repository, a **worker** is one decentralized learning participant (node/client):
+- it owns local train/test data loaders,
+- performs local optimization steps,
+- communicates with neighbors,
+- applies robust aggregation logic under Byzantine settings.
+
+So one worker instance corresponds to one simulated node in the decentralized network.
+
 ## Sampling / Bandit Hook Points
 
 - `banditdl/core/sampling.py`
