@@ -1,0 +1,24 @@
+mode: fixed
+dataset: mnist
+model: cnn_mnist
+nb_workers: 30
+alpha: 1
+result_directory: results_mnist/results-data-mnist-fx
+plot_directory: results_mnist/results-plot-mnist-fx
+byzcounts: [6, 3, 0]
+b_hat_list: [6, 3, 0]
+nb_neighbors_list: [15]
+nb_local_steps: [1]
+attacks: [dissensus, ALIE, SF, FOE]
+method_values: [null]
+params_common:
+  batch-size: 25
+  loss: NLLLoss
+  weight-decay: 1e-4
+  nb-steps: 200
+  momentum-worker: 0.9
+  numb-labels: 10
+  pre-aggregator: nnm
+  aggregator: trmean
+  evaluation-delta: 20
+  method: cs+

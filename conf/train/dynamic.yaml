@@ -1,0 +1,5 @@
+train_program: banditdl/experiments/train_p2p.py
+plot_location: eval
+plot_column: Accuracy
+plot_reduction: max
+neighbor_sampler: uniform

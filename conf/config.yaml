@@ -1,0 +1,11 @@
+defaults:
+  - profile: cifar_dynamic
+  - train: dynamic
+  - sweep: default
+  - _self_
+
+hydra:
+  run:
+    dir: .hydra_runs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: .hydra_multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}

@@ -1,0 +1,28 @@
+mode: fixed
+dataset: cifar10
+model: cnn_cifar_old
+nb_workers: 20
+alpha: 1
+result_directory: results_cifar10/results-data-cifar10-fx-dissensus
+plot_directory: results_cifar10/results-plot-cifar10-fx-dissensus
+byzcounts: [3, 0]
+b_hat_list: []
+nb_neighbors_list: [6]
+nb_local_steps: [3, 1]
+attacks: [dissensus, ALIE, SF, FOE]
+method_values: [cs+, gts, cs_he]
+params_common:
+  batch-size: 50
+  loss: NLLLoss
+  learning-rate: 0.5
+  learning-rate-decay: 100
+  learning-rate-decay-delta: 500
+  weight-decay: 1e-2
+  evaluation-delta: 20
+  nb-steps: 2000
+  momentum-worker: 0.99
+  numb-labels: 10
+  mimic-learning-phase: 400
+  pre-aggregator: nnm
+  aggregator: trmean
+  method: cs+

@@ -1,0 +1,24 @@
+mode: dynamic
+dataset: mnist
+model: cnn_mnist
+nb_workers: 100
+alpha: 1
+result_directory: results_mnist/results-data-mnist-iclr
+plot_directory: results_mnist/results-plot-mnist-iclr
+byzcounts: [1, 0]
+b_hat_list: [1, 0]
+nb_neighbors_list: [3, 4, 5]
+nb_local_steps: [1, 3]
+attacks: [ALIE]
+method_values: [null]
+params_common:
+  batch-size: 25
+  loss: NLLLoss
+  weight-decay: 1e-4
+  nb-steps: 200
+  momentum-worker: 0.9
+  numb-labels: 10
+  pre-aggregator: nnm
+  aggregator: trmean
+  evaluation-delta: 20
+  rag: true
