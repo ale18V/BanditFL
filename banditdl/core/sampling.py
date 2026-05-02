@@ -12,4 +12,3 @@ class UniformNeighborSampler:
         if rng is None:
             return random.sample(population, k)
         return rng.sample(population, k)
-

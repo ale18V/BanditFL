@@ -4,7 +4,7 @@ from banditdl.core.training.byzantine import ByzantineWorker
 from banditdl.core.robustness.attacks import ByzantineAttack
 from banditdl.data import models
 from banditdl.core import common as misc
-from banditdl.sampling import UniformNeighborSampler
+from banditdl.core.sampling import UniformNeighborSampler
 
 class P2PWorker(object):
     """A worker for decentralized learning in peer to peer model."""

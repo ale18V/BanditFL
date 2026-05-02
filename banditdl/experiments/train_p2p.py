@@ -18,7 +18,7 @@ import torch, argparse, signal, sys, pathlib, random
 from banditdl.core.robustness.attacks import ByzantineAttack
 from banditdl.core.training.dynamic.worker import P2PWorker
 from banditdl.core.training.byzantine import ByzantineWorker
-from banditdl.sampling import UniformNeighborSampler
+from banditdl.core.sampling import UniformNeighborSampler
 import time
 import numpy as np
 import os
@@ -185,7 +185,7 @@ def process_commandline():
 		type=str,
 		default="uniform",
 		choices=["uniform"],
-		help="Neighbor sampler strategy. Keep 'uniform' or plug a bandit sampler in banditdl.sampling.")
+		help="Neighbor sampler strategy. Keep 'uniform' or plug a bandit sampler in banditdl.core.sampling.")
 	return parser.parse_args(sys.argv[1:])
 
 with tools.Context("cmdline", "info"):
