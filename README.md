@@ -28,7 +28,7 @@ uv run -m banditdl profile=mnist_dynamic profile.nb_neighbors=5 profile.byzcount
 
 ## Run Sweeps (Hydra Multirun)
 
-Hydra does the orchestration. No custom in-repo scheduler is used by the main entrypoint.
+Hydra does orchestration. The custom in-repo scheduler is no longer the main path.
 
 ### Option A: Preset matrix from profile
 
@@ -113,13 +113,81 @@ Run it:
 uv run -m banditdl -m profile=my_new_profile
 ```
 
-## Runtime Logic (Short)
+## Runtime Architecture
 
-1. `uv run -m banditdl` -> `banditdl.__main__` -> `banditdl.experiments.hydra_run`.
-2. Hydra composes config from `conf/`.
-3. `hydra_run` builds one training command for that run.
-4. In multirun mode, Hydra launches many runs (one per parameter combination).
-5. Each run executes `train_p2p` or `fx_train_p2p` and writes result files.
+This section describes runtime execution logic and module interactions.
+
+### Runtime Interaction Diagram
+
+```mermaid
+flowchart TD
+    A[User: uv run -m banditdl ...] --> B[banditdl.__main__]
+    B --> C[experiments.hydra_run]
+    C --> D[Hydra config composition
+conf/config.yaml + profile/train]
+
+    D --> E{Hydra mode}
+    E -->|single run| F[One composed config]
+    E -->|multirun -m| G[Cartesian expansion from
+hydra.sweeper.params + CLI overrides]
+
+    F --> H[hydra_run builds training command]
+    G --> H
+
+    H --> I1[Runner process
+experiments.train_p2p]
+    H --> I2[Runner process
+    experiments.fx_train_p2p]
+
+    I1 --> J1[data.*
+    models + dataset loaders]
+    I1 --> K1[core.training.dynamic.worker
+    local updates + neighbor sampling]
+    K1 --> L1[core.robustness.*
+    attacks + aggregators]
+
+    I2 --> J2[data.*
+    models + dataset loaders]
+    I2 --> K2[core.training.fixed_graph.worker
+    fixed-graph updates]
+    K2 --> L2[core.robustness.*
+    attacks + summations]
+
+    I1 --> M[Per-run result directory
+    eval, eval_worst, logs]
+    I2 --> M
+```
+
+### End-to-end Flow
+
+1. You run `uv run -m banditdl ...`.
+2. `banditdl.__main__` dispatches to `banditdl.experiments.hydra_run`.
+3. Hydra composes config from `conf/`.
+4. In multirun mode, Hydra generates one run per parameter combination.
+5. For each run, `hydra_run` builds a concrete training CLI command.
+6. Training runner (`train_p2p` or `fx_train_p2p`) executes and writes results.
+
+### Responsibilities By Module
+
+- `banditdl.experiments.hydra_run`
+  - Hydra-to-runner adapter.
+  - Converts composed config into one concrete training command.
+
+- `banditdl.experiments.train_p2p` / `fx_train_p2p`
+  - Per-run executables for dynamic/fixed settings.
+  - Drive training/evaluation loops and persistence.
+
+- `banditdl.core.training.*`
+  - Worker logic for local updates and communication.
+
+- `banditdl.core.robustness.*`
+  - Byzantine attacks and robust aggregation/summation rules.
+
+- `banditdl.data.*`
+  - Dataset loading/partitioning and model construction.
+
+- `banditdl.core.sampling`
+  - Neighbor sampling strategy used in dynamic worker mode.
 
 ## Sampling / Bandit Hook Points
 
