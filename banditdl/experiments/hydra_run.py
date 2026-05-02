@@ -8,7 +8,23 @@ import hydra
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
-from banditdl.core.tools.jobs import dict_to_cmdlist
+
+
+def dict_to_cmdlist(dp):
+    cmd = []
+    for name, value in dp.items():
+        if isinstance(value, bool):
+            if value:
+                cmd.append(f"--{name}")
+        else:
+            if isinstance(value, (list, tuple)):
+                cmd.append(f"--{name}")
+                for subval in value:
+                    cmd.append(str(subval))
+            elif value is not None:
+                cmd.append(f"--{name}")
+                cmd.append(str(value))
+    return cmd
 
 
 def _module_from_program_path(program_path: str) -> str:
