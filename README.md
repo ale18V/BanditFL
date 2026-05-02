@@ -38,6 +38,56 @@ uv run -m banditdl -m profile=mnist_dynamic profile.nb_neighbors_list='[3,4,5]'
 
 This section describes execution logic, not folder layout.
 
+
+### Runtime Interaction Diagram
+
+```mermaid
+flowchart TD
+    A[User: uv run -m banditdl ...] --> B[banditdl.__main__]
+    B --> C[experiments.hydra_run]
+    C --> D[Hydra config composition
+conf/config.yaml + profile/train/sweep]
+    D --> E[experiments.common.run_sweep]
+
+    E --> F[core.tools.jobs.Jobs
+Job Scheduler]
+    E --> G[Command Builder
+python -m train module + CLI args]
+    G --> F
+
+    F --> H1[Job Runner Process
+experiments.train_p2p]
+    F --> H2[Job Runner Process
+experiments.fx_train_p2p]
+
+    H1 --> I1[data.*
+models + dataset loaders]
+    H1 --> J1[core.training.dynamic.worker
+local step + neighbor sampling]
+    J1 --> K1[core.robustness.*
+attacks + aggregators]
+
+    H2 --> I2[data.*
+models + dataset loaders]
+    H2 --> J2[core.training.fixed_graph.worker
+fixed-graph updates]
+    J2 --> K2[core.robustness.*
+attacks + summations]
+
+    H1 --> L[Per-job result directory
+(eval, eval_worst, logs)]
+    H2 --> L
+
+    L --> M[core.analysis.study + core.common
+load/reduce/plot]
+    M --> N[plots + aggregated summaries]
+```
+
+Read it as:
+- `run_sweep` defines the experiment Cartesian product.
+- `Jobs` is the scheduler/executor for seeds/devices.
+- `train_p2p` / `fx_train_p2p` are per-job runners started as subprocesses.
+
 ### End-to-end Flow
 
 1. You launch `uv run -m banditdl ...`.
