@@ -30,16 +30,16 @@ uv run -m banditdl profile=mnist_dynamic profile.nb_neighbors=5 profile.byzcount
 
 Hydra does the orchestration. No custom in-repo scheduler is used by the main entrypoint.
 
-### Option A: One-command preset sweep (matrix in config)
+### Option A: Preset matrix from profile
+
+Each profile contains its own `hydra.sweeper.params` matrix.
 
 ```bash
-uv run -m banditdl -m sweep=cifar_dynamic
-uv run -m banditdl -m sweep=mnist_dynamic
-uv run -m banditdl -m sweep=cifar_fixed
-uv run -m banditdl -m sweep=mnist_fixed
+uv run -m banditdl -m profile=cifar_dynamic
+uv run -m banditdl -m profile=mnist_dynamic
+uv run -m banditdl -m profile=cifar_fixed
+uv run -m banditdl -m profile=mnist_fixed
 ```
-
-Sweep presets are defined in `conf/sweep/*.yaml` through `hydra.sweeper.params`.
 
 ### Option B: Ad-hoc sweep from CLI
 
@@ -64,7 +64,6 @@ uv run -m banditdl -m \
 Top-level:
 - `profile` (config group)
 - `train` (config group)
-- `sweep` (config group)
 - `seed`
 - `device`
 
@@ -76,6 +75,7 @@ Top-level:
 - `nb_neighbors`, `nb_local_steps`
 - `attack`, `method`
 - `params_common` (forwarded as CLI args to training runner)
+- `hydra.sweeper.params` (preset sweep matrix)
 
 `train` fields:
 - `train_program`: module path (`train_p2p` or `fx_train_p2p`)
@@ -90,17 +90,18 @@ uv run -m banditdl --cfg job
 ## How To Create A New Experiment
 
 1. Copy a profile in `conf/profile/`.
-2. Change scalar defaults for a single-run baseline.
-3. For matrix sweeps, add a file in `conf/sweep/` with `hydra.sweeper.params`.
+2. Set scalar defaults for single-run behavior.
+3. Add/update `hydra.sweeper.params` in the same profile for preset matrix sweeps.
 
-Example sweep preset:
+Example:
 
 ```yaml
-# conf/sweep/my_sweep.yaml
+# conf/profile/my_new_profile.yaml
+mode: dynamic
+...
 hydra:
   sweeper:
     params:
-      profile: mnist_dynamic
       seed: 0,1
       profile.nb_neighbors: 3,5,7
       profile.attack: ALIE,SF
@@ -109,7 +110,7 @@ hydra:
 Run it:
 
 ```bash
-uv run -m banditdl -m sweep=my_sweep
+uv run -m banditdl -m profile=my_new_profile
 ```
 
 ## Runtime Logic (Short)

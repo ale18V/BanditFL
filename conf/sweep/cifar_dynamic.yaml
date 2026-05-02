@@ -1,9 +1,0 @@
-hydra:
-  sweeper:
-    params:
-      profile: cifar_dynamic
-      seed: 0,1
-      profile.byzcount: 3,0
-      profile.nb_neighbors: 6
-      profile.attack: ALIE,FOE,SF
-      profile.nb_local_steps: 1,3

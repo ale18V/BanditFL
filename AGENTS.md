@@ -47,8 +47,6 @@ This file records repository-specific engineering preferences and workflow rules
 - Minimize long explanations unless explicitly requested.
 - If a design choice is questionable, state it plainly and fix it.
 
-## Current Decision: Sampling Module
+## Workflow
 
-- Sampling is currently in `banditdl/sampling/` to isolate frequently changing experiment logic.
-- If preferred, it can be collapsed to `banditdl/core/sampling.py` (or `banditdl/sampling.py`) in a follow-up simplification pass.
-- Default preference for future changes: choose the flatter option when both are acceptable.
+- Always keep the README up to date.

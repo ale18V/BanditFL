@@ -21,3 +21,15 @@ params_common:
   pre-aggregator: nnm
   aggregator: trmean
   evaluation-delta: 20
+
+hydra:
+  sweeper:
+    params:
+      train: fixed
+      seed: 0,1
+      profile.byzcount: 6,3,0
+      profile.b_hat: 6,3,0
+      profile.nb_neighbors: 15
+      profile.attack: dissensus,ALIE,SF,FOE
+      profile.nb_local_steps: 1
+      profile.method: cs+
