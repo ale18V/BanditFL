@@ -33,6 +33,77 @@ Hydra multirun example:
 uv run -m banditdl -m profile=mnist_dynamic profile.nb_neighbors_list='[3,4,5]'
 ```
 
+
+## Runtime Architecture
+
+This section describes execution logic, not folder layout.
+
+### End-to-end Flow
+
+1. You launch `uv run -m banditdl ...`.
+2. `banditdl.__main__` dispatches to `banditdl.experiments.hydra_run`.
+3. Hydra loads config (`conf/config.yaml` + selected `profile/train/sweep`).
+4. `hydra_run` translates config into sweep jobs and calls `run_sweep(...)`.
+5. `run_sweep` creates a `Jobs` scheduler (parallel devices/seeds), then submits one training process per combination of:
+   - byzantine count
+   - neighbors
+   - attack
+   - local steps
+   - method (fixed-graph mode)
+   - seed
+6. Each job runs a training entrypoint module (`train_p2p` or `fx_train_p2p`) as a separate Python process.
+7. Training process builds workers, runs train/eval loop, writes results in its own result directory.
+8. After all jobs finish, `run_sweep` loads result files and generates plots.
+
+### Responsibilities By Runtime Module
+
+- `banditdl.experiments.hydra_run`
+  - Control-plane adapter between Hydra config and sweep engine.
+  - Defines how config fields map to training CLI parameters.
+
+- `banditdl.experiments.common`
+  - Sweep execution engine.
+  - Builds commands, schedules jobs, waits for completion, triggers plotting.
+
+- `banditdl.core.tools.jobs`
+  - Concurrent job runner.
+  - Handles seed replication, device assignment, subprocess execution, stdout/stderr capture.
+
+- `banditdl.experiments.train_p2p` (dynamic) and `banditdl.experiments.fx_train_p2p` (fixed)
+  - Per-job runtime script.
+  - Parses job CLI args, creates datasets/workers, performs iterative training/evaluation, persists metrics.
+
+- `banditdl.core.training.*`
+  - Worker logic and update rules.
+  - Dynamic/fixed communication behavior, aggregation calls, attack handling integration.
+
+- `banditdl.core.robustness.*`
+  - Attack implementations and robust aggregation/summation algorithms.
+
+- `banditdl.data.*`
+  - Dataset creation/partitioning and model instantiation.
+
+- `banditdl.core.sampling`
+  - Neighbor sampler strategy used by dynamic workers.
+  - Current baseline: uniform sampling.
+
+- `banditdl.core.analysis.study` + `banditdl.core.common`
+  - Result loading, reduction, plotting helpers used after job completion.
+
+### Interaction Contracts
+
+- **Hydra -> Sweep Engine**: structured config objects become explicit sweep loops and CLI parameter dictionaries.
+- **Sweep Engine -> Training Processes**: subprocess contract is pure CLI arguments; each run is isolated by result directory.
+- **Training -> Core Algorithms**: training entrypoints orchestrate, core modules compute.
+- **Core -> Data**: workers request models/data loaders, then operate on tensor updates/aggregation.
+- **Post-processing**: analysis reads generated result files only (no in-memory coupling with training processes).
+
+### Why This Split
+
+- Experiment iteration speed lives in config + orchestration.
+- Algorithm correctness and simulation behavior live in core/training/robustness.
+- Sampling research can evolve independently via `core.sampling` and training wiring.
+
 ## Existing Setups In This Repo
 
 - `cifar_dynamic`: dynamic peer-to-peer CIFAR-10
