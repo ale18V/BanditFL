@@ -70,9 +70,10 @@ Top-level:
 
 `profile` fields:
 - `mode`: `dynamic` or `fixed`
-- `dataset`, `model`, `nodes`, `sampling`, `alpha`
+- `dataset`, `model`, `nodes`, `alpha`
+- `sampling` (dynamic mode) or `degree` (fixed mode)
 - `result_directory`, `plot_directory`
-- `byzcount`, `b_hat`
+- `byzcount`, `byzantine_budget`
 - `nb_local_steps`
 - `attack`, `method`
 - `params_common` (forwarded as CLI args to training runner)
@@ -82,8 +83,9 @@ Top-level:
 - `train_program`: module path (`train_p2p` or `fx_train_p2p`)
 - `neighbor_sampler`: e.g. `uniform` (plug bandit samplers here)
 
-Derived runtime value:
-- `nb_neighbors = round((nodes - 1) * sampling)` clamped to `[1, nodes-1]`
+Topology mapping:
+- dynamic mode: uses `sampling` ratio (also passed directly to dynamic workers)
+- fixed mode: uses explicit `degree` from config
 
 Inspect resolved config:
 

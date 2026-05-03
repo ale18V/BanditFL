@@ -175,6 +175,10 @@ def process_commandline():
 	parser.add_argument("--nb-neighbors", 
 		type=int, default=1, 
 		help="Number of neighbors to communicate with")
+	parser.add_argument("--sampling-ratio",
+		type=float,
+		default=None,
+		help="Dynamic mode sampling ratio in [0,1]. If set, nb-neighbors is derived from this ratio.")
 	parser.add_argument("--b-hat",
 		type=int, default=0, 
 		help="Number of selected Byzantine workers")
@@ -198,7 +202,7 @@ with tools.Context("cmdline", "info"):
 	cmdline_config = "Configuration" + misc.print_conf((
 		("Reproducibility", "not enforced" if args.seed < 0 else (f"enforced (seed {args.seed})")),
 		("#workers", args.nb_workers),
-		("#neighbors", args.nb_neighbors),
+		("#neighbors", args.nb_neighbors if args.sampling_ratio is None else f"derived from sampling-ratio={args.sampling_ratio}"),
 		("#declared Byz.", args.nb_decl_byz),
 		("#actually Byz.", args.nb_real_byz),
 		("Model", args.model),
@@ -276,7 +280,7 @@ with tools.Context("training", "info"):
 		#JS: Instantiate worker i
 		worker_i = DynamicWorker(worker_id, train_loader_dict[worker_id], test_loader, args.nb_workers, args.nb_decl_byz, args.nb_real_byz, args.aggregator, args.pre_aggregator,
 					args.server_clip, args.bucket_size, args.model, args.learning_rate, args.learning_rate_decay, args.learning_rate_decay_delta, args.weight_decay,
-					args.loss, args.momentum_worker, args.device, labelflipping, args.gradient_clip, args.numb_labels, args.nb_neighbors, args.rag, args.b_hat, args.nb_local_steps,
+					args.loss, args.momentum_worker, args.device, labelflipping, args.gradient_clip, args.numb_labels, args.nb_neighbors, args.sampling_ratio, args.rag, args.b_hat, args.nb_local_steps,
 					neighbor_sampler=neighbor_sampler)
 		if worker_id > 0:
 			#JS: Set model/parameters of worker i to those of worker 0

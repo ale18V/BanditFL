@@ -31,17 +31,22 @@ def _module_from_program_path(program_path: str) -> str:
     return pathlib.Path(program_path).with_suffix("").as_posix().replace("/", ".")
 
 
-def _run_name(cfg: DictConfig, b_hat: int) -> str:
+def _run_name(cfg: DictConfig, byzantine_budget: int, nb_neighbors: int) -> str:
+    topology_token = (
+        f"-sampling_{cfg.profile.sampling}"
+        if cfg.profile.mode == "dynamic"
+        else f"-degree_{nb_neighbors}"
+    )
     base = (
         f"{cfg.profile.dataset}-n_{cfg.profile.nodes}"
         f"-model_{cfg.profile.model}"
         f"-attack_{cfg.profile.attack}"
         f"-agg_{cfg.profile.params_common.aggregator}"
-        f"-sampling_{cfg.profile.sampling}"
+        f"{topology_token}"
         f"-sampler_{cfg.train.neighbor_sampler}"
         f"-f_{cfg.profile.byzcount}"
         f"-alpha_{cfg.profile.alpha}"
-        f"-b_hat_{b_hat}"
+        f"-byz_budget_{byzantine_budget}"
         f"-nb-local_{cfg.profile.nb_local_steps}"
     )
     method = cfg.profile.get("method")
@@ -58,8 +63,11 @@ def main(cfg: DictConfig) -> None:
     # Build one concrete training run from config.
     params: dict[str, Any] = dict(params_common)
     nodes = int(cfg.profile.nodes)
-    sampling = float(cfg.profile.sampling)
-    nb_neighbors = max(1, min(nodes - 1, int(round((nodes - 1) * sampling))))
+    if cfg.profile.mode == "dynamic":
+        sampling = float(cfg.profile.sampling)
+        nb_neighbors = max(1, min(nodes - 1, int(round((nodes - 1) * sampling))))
+    else:
+        nb_neighbors = int(cfg.profile.degree)
 
     params["dataset"] = cfg.profile.dataset
     params["model"] = cfg.profile.model
@@ -73,12 +81,13 @@ def main(cfg: DictConfig) -> None:
     params["nb-local-steps"] = int(cfg.profile.nb_local_steps)
     params["neighbor-sampler"] = cfg.train.neighbor_sampler
 
-    b_hat_raw = cfg.profile.get("b_hat")
-    b_hat = int(cfg.profile.byzcount if b_hat_raw is None else b_hat_raw)
-    params["b-hat"] = b_hat
+    byz_budget_raw = cfg.profile.get("byzantine_budget")
+    byzantine_budget = int(cfg.profile.byzcount if byz_budget_raw is None else byz_budget_raw)
+    params["b-hat"] = byzantine_budget
 
     if cfg.profile.mode == "dynamic":
         params["rag"] = True
+        params["sampling-ratio"] = float(cfg.profile.sampling)
 
     method = cfg.profile.get("method")
     if method is not None:
@@ -87,7 +96,7 @@ def main(cfg: DictConfig) -> None:
     # Per-run output directory managed by Hydra.
     hydra_out = pathlib.Path(HydraConfig.get().runtime.output_dir)
     results_root = pathlib.Path(cfg.profile.result_directory)
-    run_name = _run_name(cfg, b_hat)
+    run_name = _run_name(cfg, byzantine_budget, nb_neighbors)
     result_dir = results_root / f"{run_name}-seed_{cfg.seed}"
 
     module_name = _module_from_program_path(cfg.train.train_program)

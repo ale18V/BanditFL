@@ -30,6 +30,7 @@ class DynamicWorker(HonestWorker):
         gradient_clip,
         numb_labels,
         nb_neighbors,
+        sampling_ratio,
         rag,
         b_hat,
         nb_local_steps,
@@ -57,7 +58,12 @@ class DynamicWorker(HonestWorker):
             rag,
             b_hat,
         )
-        self.nb_neighbors = nb_neighbors
+        self.sampling_ratio = sampling_ratio
+        self.nb_neighbors = (
+            max(1, min(self.nb_honest + self.nb_byz - 1, int(round((self.nb_honest + self.nb_byz - 1) * sampling_ratio))))
+            if sampling_ratio is not None
+            else nb_neighbors
+        )
         self.neighbor_sampler = neighbor_sampler or UniformNeighborSampler()
         self.robust_aggregator = RobustAggregator(
             aggregator,

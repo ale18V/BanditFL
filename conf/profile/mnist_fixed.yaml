@@ -2,12 +2,12 @@ mode: fixed
 dataset: mnist
 model: cnn_mnist
 nodes: 30
-sampling: 0.52
+degree: 15
 alpha: 1
 result_directory: results_mnist/results-data-mnist-fx
 plot_directory: results_mnist/results-plot-mnist-fx
 byzcount: 0
-b_hat: 0
+byzantine_budget: 0
 nb_local_steps: 1
 attack: null
 method: cs+
@@ -28,6 +28,6 @@ hydra:
       train: fixed
       seed: 0,1
       profile.nodes: 30
-      profile.sampling: 0.52
+      profile.degree: 15
       profile.nb_local_steps: 1
       profile.method: cs+

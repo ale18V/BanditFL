@@ -7,7 +7,7 @@ alpha: 1
 result_directory: results_mnist/results-data-mnist-iclr
 plot_directory: results_mnist/results-plot-mnist-iclr
 byzcount: 0
-b_hat: 0
+byzantine_budget: 0
 nb_local_steps: 1
 attack: null
 method: null
