@@ -7,6 +7,8 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 
 from banditdl.experiments.engine import run_dynamic, run_fixed
+
+
 def _run_name(cfg: DictConfig, byzantine_budget: int, nb_neighbors: int) -> str:
     topology_token = (
         f"-sampling_{cfg.profile.sampling}"
@@ -28,6 +30,11 @@ def _run_name(cfg: DictConfig, byzantine_budget: int, nb_neighbors: int) -> str:
     method = cfg.profile.get("method")
     if method is not None:
         base += f"-{method}"
+    if cfg.train.neighbor_sampler in {"bandit", "epsilon_greedy"}:
+        base += (
+            f"-eps_{cfg.train.get('bandit_epsilon', 0.1)}"
+            f"-init_{cfg.train.get('bandit_initial_value', 0.0)}"
+        )
     return base
 
 
@@ -56,9 +63,13 @@ def main(cfg: DictConfig) -> None:
         params["attack"] = cfg.profile.attack
     params["nb-local-steps"] = int(cfg.profile.nb_local_steps)
     params["neighbor-sampler"] = cfg.train.neighbor_sampler
+    params["bandit-epsilon"] = float(cfg.train.get("bandit_epsilon", 0.1))
+    params["bandit-initial-value"] = float(cfg.train.get("bandit_initial_value", 0.0))
 
     byz_budget_raw = cfg.profile.get("byzantine_budget")
-    byzantine_budget = int(cfg.profile.byzcount if byz_budget_raw is None else byz_budget_raw)
+    byzantine_budget = int(
+        cfg.profile.byzcount if byz_budget_raw is None else byz_budget_raw
+    )
     params["b-hat"] = byzantine_budget
 
     if cfg.profile.mode == "dynamic":
@@ -73,9 +84,19 @@ def main(cfg: DictConfig) -> None:
     run_name = _run_name(cfg, byzantine_budget, nb_neighbors)
     result_dir = results_root / f"{run_name}-seed_{cfg.seed}"
     if cfg.profile.mode == "dynamic":
-        run_dynamic(params=params, result_dir=result_dir, seed=int(cfg.seed), device=str(cfg.device))
+        run_dynamic(
+            params=params,
+            result_dir=result_dir,
+            seed=int(cfg.seed),
+            device=str(cfg.device),
+        )
     else:
-        run_fixed(params=params, result_dir=result_dir, seed=int(cfg.seed), device=str(cfg.device))
+        run_fixed(
+            params=params,
+            result_dir=result_dir,
+            seed=int(cfg.seed),
+            device=str(cfg.device),
+        )
 
 
 if __name__ == "__main__":

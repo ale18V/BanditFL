@@ -80,7 +80,9 @@ Top-level:
 - `hydra.sweeper.params` (preset sweep matrix)
 
 `train` fields:
-- `neighbor_sampler`: e.g. `uniform` (plug bandit samplers here)
+- `neighbor_sampler`: `uniform`, `bandit`, or `epsilon_greedy`
+- `bandit_epsilon`: exploration rate for the bandit sampler
+- `bandit_initial_value`: initial arm value for unseen neighbors
 
 Topology mapping:
 - dynamic mode: uses `sampling` ratio (also passed directly to dynamic workers)
@@ -284,3 +286,21 @@ Interpretation:
 - `banditdl/core/sampling.py`
 - `banditdl/experiments/engine.py`
 - `banditdl/core/worker/`
+
+Use the multi-armed bandit sampler in dynamic mode:
+
+```bash
+uv run -m banditdl \
+  profile=mnist_dynamic \
+  train.neighbor_sampler=bandit \
+  train.bandit_epsilon=0.1 \
+  profile.sampling=0.05 \
+  seed=0
+```
+
+Current bandit feedback:
+- each neighbor is one arm,
+- dynamic workers update selected arms after receiving neighbor weights,
+- reward is `1 / (1 + parameter_distance)` against the local model before aggregation.
+
+This is intentionally small: sampler choice and bandit parameters are Hydra-controlled, while reward design remains isolated in `DynamicWorker.observe_neighbors`.

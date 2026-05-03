@@ -1,7 +1,7 @@
 import torch
 
 from banditdl.core.robustness.aggregators import RobustAggregator
-from banditdl.core.sampling import UniformNeighborSampler
+from banditdl.core.sampling import make_neighbor_sampler
 from banditdl.core.worker.base import HonestWorker
 
 
@@ -60,11 +60,17 @@ class DynamicWorker(HonestWorker):
         )
         self.sampling_ratio = sampling_ratio
         self.nb_neighbors = (
-            max(1, min(self.nb_honest + self.nb_byz - 1, int(round((self.nb_honest + self.nb_byz - 1) * sampling_ratio))))
+            max(
+                1,
+                min(
+                    self.nb_honest + self.nb_byz - 1,
+                    int(round((self.nb_honest + self.nb_byz - 1) * sampling_ratio)),
+                ),
+            )
             if sampling_ratio is not None
             else nb_neighbors
         )
-        self.neighbor_sampler = neighbor_sampler or UniformNeighborSampler()
+        self.neighbor_sampler = neighbor_sampler or make_neighbor_sampler("uniform")
         self.robust_aggregator = RobustAggregator(
             aggregator,
             pre_aggregator,
@@ -83,7 +89,9 @@ class DynamicWorker(HonestWorker):
         if self.rag:
             self._aggregate_with_rag(pivot_params, weights)
         else:
-            self._aggregate_cgplus(pivot_params, weights, max(self._current_step - 1, 0))
+            self._aggregate_cgplus(
+                pivot_params, weights, max(self._current_step - 1, 0)
+            )
         return None
 
     def _sample_neighbors(self):
@@ -91,19 +99,35 @@ class DynamicWorker(HonestWorker):
         indices_list.remove(self.worker_id)
         return self.neighbor_sampler.sample(indices_list, self.nb_neighbors)
 
+    def observe_neighbors(self, neighbor_indices, neighbor_weights) -> None:
+        if not hasattr(self.neighbor_sampler, "update"):
+            return None
+        pivot_params = self.pull(None)
+        rewards = [
+            1 / (1 + torch.norm(weight - pivot_params).item())
+            for weight in neighbor_weights
+        ]
+        self.neighbor_sampler.update(neighbor_indices, rewards)
+        return None
+
     def _aggregate_cgplus(self, pivot_params, worker_params, current_step):
         worker_params = torch.stack(worker_params)
         differences = worker_params - pivot_params
         distances = differences.norm(dim=1)
-        clipping_threshold = torch.topk(distances, 2 * self.b_hat).values[-1] if self.b_hat > 0 else torch.inf
+        clipping_threshold = (
+            torch.topk(distances, 2 * self.b_hat).values[-1]
+            if self.b_hat > 0
+            else torch.inf
+        )
         mask = distances[:, None].broadcast_to(differences.shape) > clipping_threshold
-        clipped_differences = torch.where(mask, differences * (clipping_threshold / distances[:, None]), differences)
+        clipped_differences = torch.where(
+            mask, differences * (clipping_threshold / distances[:, None]), differences
+        )
 
         communication_lr = 1 / (current_step // 250 + 1)
-        aggregate_params = (
-            pivot_params
-            + communication_lr * clipped_differences.sum(dim=0) * (1 / self.nb_neighbors)
-        )
+        aggregate_params = pivot_params + communication_lr * clipped_differences.sum(
+            dim=0
+        ) * (1 / self.nb_neighbors)
         self.set_model_parameters(aggregate_params)
 
     def _aggregate_with_rag(self, pivot_params, worker_params):

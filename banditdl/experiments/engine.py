@@ -9,7 +9,7 @@ import numpy as np
 import torch
 
 from banditdl.utils.results import make_result_file, store_result
-from banditdl.core.sampling import UniformNeighborSampler
+from banditdl.core.sampling import make_neighbor_sampler
 from banditdl.core.topology.fxgraph import generate_connected_graph
 from banditdl.core.topology.graph import CommunicationNetwork
 from banditdl.core.worker.byzantine import ByzantineWorker, DecByzantineWorker
@@ -28,7 +28,9 @@ def _setup_seed(seed: int) -> None:
     torch.backends.cudnn.benchmark = not reproducible
 
 
-def _make_args(params: dict, result_dir: pathlib.Path, seed: int, device: str) -> SimpleNamespace:
+def _make_args(
+    params: dict, result_dir: pathlib.Path, seed: int, device: str
+) -> SimpleNamespace:
     args = dict(params)
     args.setdefault("hetero", False)
     args.setdefault("distinct-data", False)
@@ -51,6 +53,9 @@ def _make_args(params: dict, result_dir: pathlib.Path, seed: int, device: str) -
     args.setdefault("rag", False)
     args.setdefault("method", "cs+")
     args.setdefault("attack", None)
+    args.setdefault("neighbor-sampler", "uniform")
+    args.setdefault("bandit-epsilon", 0.1)
+    args.setdefault("bandit-initial-value", 0.0)
     args["result-directory"] = str(result_dir)
     args["seed"] = seed
     args["device"] = device
@@ -61,9 +66,13 @@ def _make_args(params: dict, result_dir: pathlib.Path, seed: int, device: str) -
 
 
 def _init_workers_dynamic(args, train_loader_dict, test_loader):
-    neighbor_sampler = UniformNeighborSampler()
     workers = []
     for worker_id in range(args.nb_honests):
+        neighbor_sampler = make_neighbor_sampler(
+            args.neighbor_sampler,
+            epsilon=args.bandit_epsilon,
+            initial_value=args.bandit_initial_value,
+        )
         w = DynamicWorker(
             worker_id,
             train_loader_dict[worker_id],
@@ -155,14 +164,25 @@ def run_dynamic(params: dict, result_dir: pathlib.Path, seed: int, device: str) 
 
         for w in workers:
             neighbor_indices = w._sample_neighbors()
-            honest_neighbor_weights = [honest_weights[i] for i in neighbor_indices if i < args.nb_honests]
-            byz_neighbor_ids = [i for i in neighbor_indices if i >= args.nb_honests]
+            selected_neighbor_ids = []
+            neighbor_weights = []
+            byz_neighbor_ids = []
+            for neighbor_id in neighbor_indices:
+                if neighbor_id < args.nb_honests:
+                    selected_neighbor_ids.append(neighbor_id)
+                    neighbor_weights.append(honest_weights[neighbor_id])
+                else:
+                    byz_neighbor_ids.append(neighbor_id)
+                    if byz_workers:
+                        selected_neighbor_ids.append(neighbor_id)
+                        neighbor_weights.append(
+                            byz_workers[0].pull(
+                                {"honest_weights": honest_weights, "step": current_step}
+                            )
+                        )
             w.num_selected_byz.append(len(byz_neighbor_ids))
-            byz_weights = [
-                byz_workers[0].pull({"honest_weights": honest_weights, "step": current_step})
-                for _ in byz_neighbor_ids
-            ] if byz_neighbor_ids and byz_workers else []
-            w.aggregate(honest_neighbor_weights + byz_weights)
+            w.observe_neighbors(selected_neighbor_ids, neighbor_weights)
+            w.aggregate(neighbor_weights)
 
     if accuracies:
         worst_idx = min(range(len(workers)), key=lambda i: accuracies[-1][i])
@@ -190,7 +210,11 @@ def run_fixed(params: dict, result_dir: pathlib.Path, seed: int, device: str) ->
 
     nb_edges = args.nb_workers * args.nb_neighbors // 2
     g = generate_connected_graph(args.nb_workers, nb_edges, seed=args.seed)
-    comm_graph = CommunicationNetwork(g, weights_method="metropolis", device=args.device if args.device != "auto" else "cpu")
+    comm_graph = CommunicationNetwork(
+        g,
+        weights_method="metropolis",
+        device=args.device if args.device != "auto" else "cpu",
+    )
     dissensus = args.attack == "dissensus"
 
     result_dir.mkdir(parents=True, exist_ok=True)
@@ -231,12 +255,27 @@ def run_fixed(params: dict, result_dir: pathlib.Path, seed: int, device: str) ->
         workers.append(w)
 
     byz_workers = {
-        i: ByzantineWorker(i, args.nb_workers, args.nb_decl_byz, args.nb_real_byz, args.attack, args.aggregator,
-                           args.pre_aggregator, args.server_clip, args.bucket_size, workers[0].model_size,
-                           args.mimic_learning_phase, args.gradient_clip, args.device)
+        i: ByzantineWorker(
+            i,
+            args.nb_workers,
+            args.nb_decl_byz,
+            args.nb_real_byz,
+            args.attack,
+            args.aggregator,
+            args.pre_aggregator,
+            args.server_clip,
+            args.bucket_size,
+            workers[0].model_size,
+            args.mimic_learning_phase,
+            args.gradient_clip,
+            args.device,
+        )
         for i in range(args.nb_honests, args.nb_workers)
     }
-    dec_byz_workers = {i: DecByzantineWorker(i, args.nb_honests, comm_graph, args.device) for i in range(args.nb_honests, args.nb_workers)}
+    dec_byz_workers = {
+        i: DecByzantineWorker(i, args.nb_honests, comm_graph, args.device)
+        for i in range(args.nb_honests, args.nb_workers)
+    }
 
     fd_eval = (result_dir / "eval").open("w")
     fd_eval_worst = (result_dir / "eval_worst").open("w")
@@ -262,19 +301,27 @@ def run_fixed(params: dict, result_dir: pathlib.Path, seed: int, device: str) ->
             honest_neighbor_weights = [honest_weights[i] for i in honest_neighbors]
             if dissensus:
                 byz_weights = [
-                    dec_byz_workers[i].pull({
-                        "target": w.worker_id,
-                        "honest_neighbors": honest_neighbors,
-                        "pivot_params": w.pull(None),
-                        "honest_local_params": honest_neighbor_weights,
-                    })
+                    dec_byz_workers[i].pull(
+                        {
+                            "target": w.worker_id,
+                            "honest_neighbors": honest_neighbors,
+                            "pivot_params": w.pull(None),
+                            "honest_local_params": honest_neighbor_weights,
+                        }
+                    )
                     for i in byz_neighbors
                 ]
             else:
-                byz_weights = [
-                    byz_workers[byz_neighbors[0]].pull({"honest_weights": honest_weights, "step": current_step})
-                    for _ in byz_neighbors
-                ] if byz_neighbors else []
+                byz_weights = (
+                    [
+                        byz_workers[byz_neighbors[0]].pull(
+                            {"honest_weights": honest_weights, "step": current_step}
+                        )
+                        for _ in byz_neighbors
+                    ]
+                    if byz_neighbors
+                    else []
+                )
             w.aggregate(honest_neighbor_weights + byz_weights)
 
     if accuracies:
