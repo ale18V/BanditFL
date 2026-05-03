@@ -76,7 +76,7 @@ Top-level:
 - `byzcount`, `byzantine_budget`
 - `nb_local_steps`
 - `attack`, `method`
-- `params_common` (forwarded as CLI args to training runner)
+- `params_common` (training hyperparameters passed to the engine)
 - `hydra.sweeper.params` (preset sweep matrix)
 
 `train` fields:
@@ -119,6 +119,45 @@ Run it:
 uv run -m banditdl -m profile=my_new_profile
 ```
 
+## Plot Saved Results
+
+Experiments write results first. Plotting is a standalone offline step, kept out of the Python package tree.
+
+Plot one run:
+
+```bash
+uv run python scripts/plot_results.py \
+  results_mnist/results-data-mnist-iclr/<run-dir> \
+  -o plots/example.png
+```
+
+Compare multiple runs:
+
+```bash
+uv run python scripts/plot_results.py \
+  results_mnist/results-data-mnist-iclr/<run-a> \
+  results_mnist/results-data-mnist-iclr/<run-b> \
+  --label uniform \
+  --label bandit \
+  -o plots/comparison.png
+```
+
+Aggregate seed runs:
+
+```bash
+uv run python scripts/plot_results.py \
+  results_mnist/results-data-mnist-iclr/mnist-*-seed_* \
+  --aggregate \
+  --label "uniform mean" \
+  -o plots/uniform_seed_mean.png
+```
+
+Useful options:
+- `--metric accuracies`: plot from `accuracies.npy` (default).
+- `--metric eval`: plot average accuracy from `eval`.
+- `--metric eval_worst`: plot worst-worker accuracy from `eval_worst`.
+- `--stat mean|worst`: choose mean or worst when plotting `accuracies.npy`.
+
 ## Runtime Architecture
 
 This section describes runtime execution logic and module interactions.
@@ -137,12 +176,12 @@ conf/config.yaml + profile/train]
     E -->|multirun -m| G[Cartesian expansion from
 hydra.sweeper.params + CLI overrides]
 
-    F --> H[hydra_run builds training command]
+    F --> H[hydra_run dispatches training engine]
     G --> H
 
-    H --> I1[Runner process
+    H --> I1[Training engine
 experiments.engine::run_dynamic]
-    H --> I2[Runner process
+    H --> I2[Training engine
     experiments.engine::run_fixed]
 
     I1 --> J1[data.*
@@ -170,14 +209,14 @@ experiments.engine::run_dynamic]
 2. `banditdl.__main__` dispatches to `banditdl.experiments.hydra_run`.
 3. Hydra composes config from `conf/`.
 4. In multirun mode, Hydra generates one run per parameter combination.
-5. For each run, `hydra_run` builds a concrete training CLI command.
+5. For each run, `hydra_run` dispatches the corresponding training engine function.
 6. Training engine (`experiments.engine`) executes and writes results.
 
 ### Responsibilities By Module
 
 - `banditdl.experiments.hydra_run`
-  - Hydra-to-runner adapter.
-  - Converts composed config into one concrete training command.
+  - Hydra-to-engine adapter.
+  - Converts composed config into one concrete training call.
 
 - `banditdl.experiments.engine`
   - Per-run execution logic for dynamic/fixed settings.
