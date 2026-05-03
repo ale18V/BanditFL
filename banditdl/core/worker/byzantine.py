@@ -90,3 +90,36 @@ class DecByzantineWorker(object):
         )
         byzantine_vector = byzantine_vector.squeeze(0)
         return [byzantine_vector] * self.nb_byz_neighbors
+
+
+class ByzantineNode:
+    """Explicit Byzantine participant used by the orchestrator."""
+
+    def __init__(self, node_id, byzantine_worker):
+        self.node_id = node_id
+        self._byzantine_worker = byzantine_worker
+
+    def emit_messages(self, honest_vectors, count, current_step):
+        return self._byzantine_worker.compute_byzantine_vectors(honest_vectors, None, current_step)[:count]
+
+
+class DecByzantineNode:
+    """Explicit fixed-graph Byzantine participant for dissensus mode."""
+
+    def __init__(self, node_id, network, nb_honest, device):
+        self.node_id = node_id
+        self.network = network
+        self.nb_honest = nb_honest
+        self.device = device
+
+    def emit_messages(self, target, honest_neighbors, pivot_params, honest_local_params):
+        helper = DecByzantineWorker(
+            target=target,
+            honest_neighbors=honest_neighbors,
+            nb_honest=self.nb_honest,
+            nb_byz_neighbors=1,
+            pivot_params=pivot_params,
+            network=self.network,
+            device=self.device,
+        )
+        return helper.compute_byzantine_vectors(honest_local_params)[0]

@@ -198,7 +198,7 @@ In this repository, a **worker** is one decentralized learning participant (node
 - communicates with neighbors,
 - applies robust aggregation logic under Byzantine settings.
 
-So one worker instance corresponds to one simulated node in the decentralized network.
+Honest participants are modeled as `DynamicWorker`/`FixedGraphWorker`; Byzantine participants are modeled as explicit attack-only nodes.
 
 ### Decentralized Structure Diagram
 

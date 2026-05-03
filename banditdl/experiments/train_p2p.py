@@ -17,7 +17,7 @@ tools.success("Module loading...")
 import torch, argparse, signal, sys, pathlib, random
 from banditdl.core.robustness.attacks import ByzantineAttack
 from banditdl.core.worker.dynamic import DynamicWorker
-from banditdl.core.worker.byzantine import ByzantineWorker
+from banditdl.core.worker.byzantine import ByzantineWorker, ByzantineNode
 from banditdl.core.sampling import UniformNeighborSampler
 import time
 import numpy as np
@@ -283,9 +283,10 @@ with tools.Context("training", "info"):
 			worker_i.model.load_state_dict(Workers[0].model.state_dict())
 		Workers.append(worker_i)
 
-	#JS: Instantiate Byzantine worker
-	byzWorker = ByzantineWorker(args.nb_workers, args.nb_decl_byz, args.nb_real_byz, args.attack, args.aggregator, args.pre_aggregator, args.server_clip,
+	#JS: Instantiate explicit Byzantine participants (attack-only, no local training)
+	byz_behavior = ByzantineWorker(args.nb_workers, args.nb_decl_byz, args.nb_real_byz, args.attack, args.aggregator, args.pre_aggregator, args.server_clip,
 			     args.bucket_size, Workers[0].model_size, args.mimic_learning_phase, args.gradient_clip, args.device)
+	byz_nodes = [ByzantineNode(node_id=i, byzantine_worker=byz_behavior) for i in range(args.nb_honests, args.nb_workers)]
 
 	current_step = 0
 	#Keeping track of the accuracies of all workers to check the worst one
@@ -308,9 +309,19 @@ with tools.Context("training", "info"):
         #JS: honest workers perform local step
 		honest_local_params = [worker.perform_local_step(current_step) for worker in Workers]
 
-		# Update the model on each honest worker
+		# Update each honest node by consuming received messages from sampled neighbors.
 		for worker in Workers:
-			worker.aggregate_and_update_parameters(honest_local_params, args, current_step) 
+			pivot_params = honest_local_params[worker.worker_id]
+			neighbor_indices = worker._sample_neighbors()
+			honest_neighbor_params = [honest_local_params[i] for i in neighbor_indices if i < args.nb_honests]
+			byz_neighbor_ids = [i for i in neighbor_indices if i >= args.nb_honests]
+			nb_selected_byz = len(byz_neighbor_ids)
+			if nb_selected_byz > 0 and len(byz_nodes) > 0:
+				byz_params = byz_nodes[0].emit_messages(honest_neighbor_params, nb_selected_byz, current_step)
+			else:
+				byz_params = []
+			received_params = honest_neighbor_params + byz_params
+			worker.aggregate_and_update_parameters(pivot_params, received_params, nb_selected_byz, current_step)
 
 		# Increase the step counter
 		current_step += 1

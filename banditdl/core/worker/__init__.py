@@ -3,7 +3,7 @@
 from .base import BaseWorker
 from .dynamic import DynamicWorker, P2PWorker
 from .fixed import FixedGraphWorker, FixedGraphP2PWorker
-from .byzantine import ByzantineWorker, DecByzantineWorker
+from .byzantine import ByzantineWorker, DecByzantineWorker, ByzantineNode, DecByzantineNode
 
 __all__ = [
     "BaseWorker",
@@ -13,4 +13,6 @@ __all__ = [
     "FixedGraphP2PWorker",
     "ByzantineWorker",
     "DecByzantineWorker",
+    "ByzantineNode",
+    "DecByzantineNode",
 ]
