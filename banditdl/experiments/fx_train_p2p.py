@@ -17,7 +17,7 @@ tools.success("Module loading...")
 import torch, argparse, signal, sys, pathlib, random
 from banditdl.core.robustness.attacks import ByzantineAttack
 from banditdl.core.worker.fixed import FixedGraphWorker
-from banditdl.core.worker.byzantine import ByzantineWorker, ByzantineNode, DecByzantineNode
+from banditdl.core.worker.byzantine import ByzantineWorker, DecByzantineWorker
 import time
 
 from banditdl.core.topology.fxgraph import generate_connected_graph
@@ -308,10 +308,28 @@ with tools.Context("training", "info"):
 			worker_i.model.load_state_dict(Workers[0].model.state_dict())
 		Workers.append(worker_i)
 
-	byz_behavior = ByzantineWorker(args.nb_workers, args.nb_decl_byz, args.nb_real_byz, args.attack, args.aggregator, args.pre_aggregator, args.server_clip,
-			     args.bucket_size, Workers[0].model_size, args.mimic_learning_phase, args.gradient_clip, args.device)
-	byz_nodes = {i: ByzantineNode(node_id=i, byzantine_worker=byz_behavior) for i in range(args.nb_honests, args.nb_workers)}
-	dec_byz_nodes = {i: DecByzantineNode(node_id=i, network=fixed_G, nb_honest=args.nb_honests, device=args.device) for i in range(args.nb_honests, args.nb_workers)}
+	byz_workers = {
+		i: ByzantineWorker(
+			worker_id=i,
+			nb_workers=args.nb_workers,
+			nb_decl_byz=args.nb_decl_byz,
+			nb_real_byz=args.nb_real_byz,
+			attack=args.attack,
+			aggregator=args.aggregator,
+			second_aggregator=args.pre_aggregator,
+			server_clip=args.server_clip,
+			bucket_size=args.bucket_size,
+			model_size=Workers[0].model_size,
+			mimic_learning_phase=args.mimic_learning_phase,
+			gradient_clip=args.gradient_clip,
+			device=args.device,
+		)
+		for i in range(args.nb_honests, args.nb_workers)
+	}
+	dec_byz_workers = {
+		i: DecByzantineWorker(worker_id=i, nb_honest=args.nb_honests, network=fixed_G, device=args.device)
+		for i in range(args.nb_honests, args.nb_workers)
+	}
 	
 
 
@@ -354,7 +372,7 @@ with tools.Context("training", "info"):
 			if nb_selected_byz > 0:
 				if dissensus:
 					byz_params = [
-						dec_byz_nodes[byz_id].emit_messages(
+						dec_byz_workers[byz_id].emit_message(
 							target=worker.worker_id,
 							honest_neighbors=honest_neighbors,
 							pivot_params=pivot_params,
@@ -363,7 +381,7 @@ with tools.Context("training", "info"):
 						for byz_id in byz_neighbor_ids
 					]
 				else:
-					byz_params = byz_nodes[byz_neighbor_ids[0]].emit_messages(
+					byz_params = byz_workers[byz_neighbor_ids[0]].emit_messages(
 						honest_neighbor_params, nb_selected_byz, current_step
 					)
 			else:

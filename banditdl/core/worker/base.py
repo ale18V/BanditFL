@@ -1,11 +1,33 @@
+from abc import ABC, abstractmethod
+
 import torch
 
 from banditdl.data import models
 from banditdl.core import common as misc
 
 
-class BaseWorker:
-    """Shared training logic for decentralized workers."""
+class BaseWorker(ABC):
+    """Worker API for all participants (honest or Byzantine)."""
+
+    def __init__(self, worker_id, is_byzantine=False):
+        self.worker_id = worker_id
+        self.is_byzantine = is_byzantine
+
+    @abstractmethod
+    def perform_local_step(self, current_step):
+        """Execute local step and return the message payload for this round."""
+
+    @abstractmethod
+    def aggregate_and_update_parameters(self, *args, **kwargs):
+        """Consume received messages and update local state."""
+
+    @abstractmethod
+    def compute_accuracy(self):
+        """Return worker accuracy when meaningful, else None."""
+
+
+class HonestWorker(BaseWorker):
+    """Shared training logic for honest decentralized workers."""
 
     def __init__(
         self,
@@ -30,7 +52,7 @@ class BaseWorker:
         rag,
         b_hat,
     ):
-        self.worker_id = worker_id
+        super().__init__(worker_id=worker_id, is_byzantine=False)
         self.nb_byz = nb_byz
         self.nb_real_byz = nb_real_byz
         self.nb_honest = nb_workers - nb_byz

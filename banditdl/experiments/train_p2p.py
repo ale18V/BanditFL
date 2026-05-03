@@ -17,7 +17,7 @@ tools.success("Module loading...")
 import torch, argparse, signal, sys, pathlib, random
 from banditdl.core.robustness.attacks import ByzantineAttack
 from banditdl.core.worker.dynamic import DynamicWorker
-from banditdl.core.worker.byzantine import ByzantineWorker, ByzantineNode
+from banditdl.core.worker.byzantine import ByzantineWorker
 from banditdl.core.sampling import UniformNeighborSampler
 import time
 import numpy as np
@@ -284,9 +284,24 @@ with tools.Context("training", "info"):
 		Workers.append(worker_i)
 
 	#JS: Instantiate explicit Byzantine participants (attack-only, no local training)
-	byz_behavior = ByzantineWorker(args.nb_workers, args.nb_decl_byz, args.nb_real_byz, args.attack, args.aggregator, args.pre_aggregator, args.server_clip,
-			     args.bucket_size, Workers[0].model_size, args.mimic_learning_phase, args.gradient_clip, args.device)
-	byz_nodes = [ByzantineNode(node_id=i, byzantine_worker=byz_behavior) for i in range(args.nb_honests, args.nb_workers)]
+	byz_workers = [
+		ByzantineWorker(
+			worker_id=i,
+			nb_workers=args.nb_workers,
+			nb_decl_byz=args.nb_decl_byz,
+			nb_real_byz=args.nb_real_byz,
+			attack=args.attack,
+			aggregator=args.aggregator,
+			second_aggregator=args.pre_aggregator,
+			server_clip=args.server_clip,
+			bucket_size=args.bucket_size,
+			model_size=Workers[0].model_size,
+			mimic_learning_phase=args.mimic_learning_phase,
+			gradient_clip=args.gradient_clip,
+			device=args.device,
+		)
+		for i in range(args.nb_honests, args.nb_workers)
+	]
 
 	current_step = 0
 	#Keeping track of the accuracies of all workers to check the worst one
@@ -316,8 +331,8 @@ with tools.Context("training", "info"):
 			honest_neighbor_params = [honest_local_params[i] for i in neighbor_indices if i < args.nb_honests]
 			byz_neighbor_ids = [i for i in neighbor_indices if i >= args.nb_honests]
 			nb_selected_byz = len(byz_neighbor_ids)
-			if nb_selected_byz > 0 and len(byz_nodes) > 0:
-				byz_params = byz_nodes[0].emit_messages(honest_neighbor_params, nb_selected_byz, current_step)
+			if nb_selected_byz > 0 and len(byz_workers) > 0:
+				byz_params = byz_workers[0].emit_messages(honest_neighbor_params, nb_selected_byz, current_step)
 			else:
 				byz_params = []
 			received_params = honest_neighbor_params + byz_params

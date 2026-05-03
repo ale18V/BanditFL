@@ -3,13 +3,13 @@ import torch
 from banditdl.core.robustness.aggregators import RobustAggregator
 from banditdl.core.robustness.summations import cs_plus, gts, cs_he
 from banditdl.core.topology.gossip import LaplacianGossipMatrix
-from banditdl.core.worker.base import BaseWorker
+from banditdl.core.worker.base import HonestWorker
 
 
 _METHODS = {"cs+": cs_plus, "cs_he": cs_he, "gts": gts}
 
 
-class FixedGraphWorker(BaseWorker):
+class FixedGraphWorker(HonestWorker):
     def __init__(
         self,
         worker_id,

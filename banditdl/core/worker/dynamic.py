@@ -2,10 +2,10 @@ import torch
 
 from banditdl.core.robustness.aggregators import RobustAggregator
 from banditdl.core.sampling import UniformNeighborSampler
-from banditdl.core.worker.base import BaseWorker
+from banditdl.core.worker.base import HonestWorker
 
 
-class DynamicWorker(BaseWorker):
+class DynamicWorker(HonestWorker):
     def __init__(
         self,
         worker_id,
