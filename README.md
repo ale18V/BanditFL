@@ -141,14 +141,14 @@ experiments.train_p2p]
 
     I1 --> J1[data.*
     models + dataset loaders]
-    I1 --> K1[core.training.dynamic.worker
+    I1 --> K1[core.worker.dynamic
     local updates + neighbor sampling]
     K1 --> L1[core.robustness.*
     attacks + aggregators]
 
     I2 --> J2[data.*
     models + dataset loaders]
-    I2 --> K2[core.training.fixed_graph.worker
+    I2 --> K2[core.worker.fixed
     fixed-graph updates]
     K2 --> L2[core.robustness.*
     attacks + summations]
@@ -177,7 +177,7 @@ experiments.train_p2p]
   - Per-run executables for dynamic/fixed settings.
   - Drive training/evaluation loops and persistence.
 
-- `banditdl.core.training.*`
+- `banditdl.core.worker.*`
   - Worker logic for local updates and communication.
 
 - `banditdl.core.robustness.*`
@@ -221,7 +221,7 @@ flowchart LR
     W2 --> S
     W3 --> S
 
-    S --> U["core.training.worker: local SGD/update + send/receive"]
+    S --> U["core.worker.*: local SGD/update + send/receive"]
     U --> A["core.robustness: attack model + robust aggregation"]
     A --> M["Updated model state per worker"]
 
@@ -238,4 +238,4 @@ Interpretation:
 
 - `banditdl/core/sampling.py`
 - `banditdl/experiments/train_p2p.py`
-- `banditdl/core/training/worker.py`
+- `banditdl/core/worker/`

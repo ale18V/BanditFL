@@ -16,8 +16,8 @@ from banditdl.core import tools
 tools.success("Module loading...")
 import torch, argparse, signal, sys, pathlib, random
 from banditdl.core.robustness.attacks import ByzantineAttack
-from banditdl.core.training.dynamic.worker import P2PWorker
-from banditdl.core.training.byzantine import ByzantineWorker
+from banditdl.core.worker.dynamic import DynamicWorker
+from banditdl.core.worker.byzantine import ByzantineWorker
 from banditdl.core.sampling import UniformNeighborSampler
 import time
 import numpy as np
@@ -274,7 +274,7 @@ with tools.Context("training", "info"):
 	Workers = list()
 	for worker_id in range(args.nb_honests):
 		#JS: Instantiate worker i
-		worker_i = P2PWorker(worker_id, train_loader_dict[worker_id], test_loader, args.nb_workers, args.nb_decl_byz, args.nb_real_byz, args.aggregator, args.pre_aggregator,
+		worker_i = DynamicWorker(worker_id, train_loader_dict[worker_id], test_loader, args.nb_workers, args.nb_decl_byz, args.nb_real_byz, args.aggregator, args.pre_aggregator,
 					args.server_clip, args.bucket_size, args.model, args.learning_rate, args.learning_rate_decay, args.learning_rate_decay_delta, args.weight_decay,
 					args.loss, args.momentum_worker, args.device, labelflipping, args.gradient_clip, args.numb_labels, args.nb_neighbors, args.rag, args.b_hat, args.nb_local_steps,
 					neighbor_sampler=neighbor_sampler)
