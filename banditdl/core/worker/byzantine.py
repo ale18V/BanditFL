@@ -46,10 +46,10 @@ class ByzantineWorker(BaseWorker):
             robust_aggregator,
         )
 
-    def train(self):
+    def train(self) -> None:
         return None
 
-    def aggregate(self, weights):
+    def aggregate(self, weights) -> None:
         return None
 
     def pull(self, context):
@@ -74,10 +74,10 @@ class DecByzantineWorker(BaseWorker):
         self.device = device
         self.epsilon = epsilon
 
-    def train(self):
+    def train(self) -> None:
         return None
 
-    def aggregate(self, weights):
+    def aggregate(self, weights) -> None:
         return None
 
     def pull(self, context):

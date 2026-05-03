@@ -70,7 +70,7 @@ class DynamicWorker(HonestWorker):
             self.device,
         )
 
-    def aggregate(self, weights):
+    def aggregate(self, weights) -> None:
         if len(weights) == 0:
             return None
         pivot_params = self.pull(None)

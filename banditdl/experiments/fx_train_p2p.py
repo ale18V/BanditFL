@@ -356,7 +356,9 @@ with tools.Context("training", "info"):
 				misc.store_result(fd_eval, current_step, avg_accuracy)
 
 		#JS: honest workers perform local step
-		honest_local_params = [worker.train() for worker in Workers]
+		for worker in Workers:
+			worker.train()
+		honest_local_params = [worker.pull(None) for worker in Workers]
 
 	
 		# Update each honest node by consuming messages from graph neighbors (+ self).
@@ -382,7 +384,7 @@ with tools.Context("training", "info"):
 					]
 				else:
 					byz_params = [
-						byz_workers[byz_neighbor_ids[0]].pull({"honest_weights": honest_neighbor_params, "step": current_step})
+						byz_workers[byz_neighbor_ids[0]].pull({"honest_weights": honest_local_params, "step": current_step})
 						for _ in byz_neighbor_ids
 					]
 			else:

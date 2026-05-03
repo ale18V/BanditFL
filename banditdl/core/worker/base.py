@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Optional
 
 import torch
 
@@ -14,15 +15,15 @@ class BaseWorker(ABC):
         self.is_byzantine = is_byzantine
 
     @abstractmethod
-    def train(self):
-        """Execute local step and return optional message payload."""
+    def train(self) -> None:
+        """Execute local local-training step."""
 
     @abstractmethod
-    def aggregate(self, weights):
+    def aggregate(self, weights) -> None:
         """Consume received weights and update local state."""
 
     @abstractmethod
-    def pull(self, context):
+    def pull(self, context) -> torch.Tensor:
         """Return weights/message to neighbors, optionally using context."""
 
     @abstractmethod
@@ -148,12 +149,12 @@ class HonestWorker(BaseWorker):
             self.local_model_update(current_step)
         return misc.flatten(self.model.parameters())
 
-    def train(self):
-        weights = self.perform_local_step(self._current_step)
+    def train(self) -> None:
+        self.perform_local_step(self._current_step)
         self._current_step += 1
-        return weights
+        return None
 
-    def pull(self, context=None):
+    def pull(self, context=None) -> torch.Tensor:
         return misc.flatten(self.model.parameters())
 
     @torch.no_grad()
