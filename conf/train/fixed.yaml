@@ -1,2 +1,1 @@
-train_program: banditdl/experiments/fx_train_p2p.py
 neighbor_sampler: uniform

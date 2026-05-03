@@ -80,7 +80,6 @@ Top-level:
 - `hydra.sweeper.params` (preset sweep matrix)
 
 `train` fields:
-- `train_program`: module path (`train_p2p` or `fx_train_p2p`)
 - `neighbor_sampler`: e.g. `uniform` (plug bandit samplers here)
 
 Topology mapping:
@@ -142,9 +141,9 @@ hydra.sweeper.params + CLI overrides]
     G --> H
 
     H --> I1[Runner process
-experiments.train_p2p]
+experiments.engine::run_dynamic]
     H --> I2[Runner process
-    experiments.fx_train_p2p]
+    experiments.engine::run_fixed]
 
     I1 --> J1[data.*
     models + dataset loaders]
@@ -172,7 +171,7 @@ experiments.train_p2p]
 3. Hydra composes config from `conf/`.
 4. In multirun mode, Hydra generates one run per parameter combination.
 5. For each run, `hydra_run` builds a concrete training CLI command.
-6. Training runner (`train_p2p` or `fx_train_p2p`) executes and writes results.
+6. Training engine (`experiments.engine`) executes and writes results.
 
 ### Responsibilities By Module
 
@@ -180,9 +179,9 @@ experiments.train_p2p]
   - Hydra-to-runner adapter.
   - Converts composed config into one concrete training command.
 
-- `banditdl.experiments.train_p2p` / `fx_train_p2p`
-  - Per-run executables for dynamic/fixed settings.
-  - Drive training/evaluation loops and persistence.
+- `banditdl.experiments.engine`
+  - Per-run execution logic for dynamic/fixed settings.
+  - Drives training/evaluation loops and persistence.
 
 - `banditdl.core.worker.*`
   - Worker logic for local updates and communication.
@@ -244,5 +243,5 @@ Interpretation:
 ## Sampling / Bandit Hook Points
 
 - `banditdl/core/sampling.py`
-- `banditdl/experiments/train_p2p.py`
+- `banditdl/experiments/engine.py`
 - `banditdl/core/worker/`
