@@ -3,7 +3,6 @@
 import networkx as nx
 import numpy as np
 import torch
-import matplotlib.pyplot as plt
 
 
 class CommunicationNetwork(nx.Graph):

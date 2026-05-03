@@ -1,11 +1,7 @@
 """Fixed-graph generation and Byzantine robustness checks."""
 
 import networkx as nx
-import numpy as np
 import random
-import matplotlib.pyplot as plt
-import itertools
-from tqdm import tqdm, trange
 
 
 def generate_connected_graph(n, e, seed=None):
@@ -23,7 +19,7 @@ def generate_connected_graph(n, e, seed=None):
         raise ValueError("Invalid number of edges for a simple connected graph.")
 
     # Generate a random spanning tree
-    G = nx.generators.trees.random_tree(n, seed=seed)
+    G = nx.random_labeled_tree(n, seed=seed)
     G = nx.Graph(G)  # Ensure it's an undirected graph
 
     # Add extra edges randomly until the edge budget is met
@@ -34,7 +30,7 @@ def generate_connected_graph(n, e, seed=None):
 
     extra_edges_needed = e - (n - 1)
     random.seed(seed)
-    extra_edges = random.sample(possible_edges, extra_edges_needed)
+    extra_edges = random.sample(sorted(possible_edges), extra_edges_needed)
     G.add_edges_from(extra_edges)
 
     return G
