@@ -200,8 +200,42 @@ In this repository, a **worker** is one decentralized learning participant (node
 
 So one worker instance corresponds to one simulated node in the decentralized network.
 
+### Decentralized Structure Diagram
+
+```mermaid
+flowchart LR
+    subgraph Topology["Decentralized Topology (N workers)"]
+        W0["Worker 0 (possibly Byzantine)"]
+        W1["Worker 1"]
+        W2["Worker 2"]
+        W3["Worker 3"]
+        W0 --- W1
+        W1 --- W2
+        W2 --- W3
+        W3 --- W0
+        W0 --- W2
+    end
+
+    W0 --> S["core.sampling: choose neighbors (dynamic mode)"]
+    W1 --> S
+    W2 --> S
+    W3 --> S
+
+    S --> U["core.training.worker: local SGD/update + send/receive"]
+    U --> A["core.robustness: attack model + robust aggregation"]
+    A --> M["Updated model state per worker"]
+
+    D["data.*: local shards + model ctor"] --> U
+```
+
+Interpretation:
+- Each worker is a simulated node with its own local data and model copy.
+- Communication is peer-to-peer, not centralized; each node exchanges updates with selected neighbors.
+- In dynamic mode, neighbor sets are re-sampled each round (`core.sampling`).
+- Received updates pass through Byzantine attack/aggregation logic before updating local state.
+
 ## Sampling / Bandit Hook Points
 
 - `banditdl/core/sampling.py`
 - `banditdl/experiments/train_p2p.py`
-- `banditdl/core/training/dynamic/worker.py`
+- `banditdl/core/training/worker.py`
