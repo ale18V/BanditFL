@@ -100,10 +100,14 @@ class FixedGraphWorker(HonestWorker):
 
         self.num_clipped = []
 
-    def aggregate_and_update_parameters(self, pivot_params, worker_params, neighbor_indices, nb_selected_byz):
-        self.num_selected_byz.append(nb_selected_byz)
+    def aggregate(self, weights):
+        if len(weights) == 0:
+            return None
+        pivot_params = self.pull(None)
+        neighbor_indices = list(self.comm_graph.neighbors(self.worker_id))
+        neighbor_indices.append(self.worker_id)
         with torch.no_grad():
-            worker_params = torch.stack(worker_params)
+            worker_params = torch.stack(weights)
             differences = worker_params - pivot_params
 
             robust_aggregate, num_clipped = _METHODS[self.method](
@@ -114,6 +118,7 @@ class FixedGraphWorker(HonestWorker):
             self.num_clipped.append(num_clipped)
             aggregate_params = pivot_params + self.rho * robust_aggregate
             self.set_model_parameters(aggregate_params)
+        return None
 
 
 FixedGraphP2PWorker = FixedGraphWorker

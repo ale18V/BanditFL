@@ -46,14 +46,19 @@ class ByzantineWorker(BaseWorker):
             robust_aggregator,
         )
 
-    def emit_messages(self, honest_vectors, count, current_step):
-        return self.byzantine_attack.generate_byzantine_vectors(honest_vectors, None, current_step)[:count]
-
-    def perform_local_step(self, current_step):
+    def train(self):
         return None
 
-    def aggregate_and_update_parameters(self, *args, **kwargs):
+    def aggregate(self, weights):
         return None
+
+    def pull(self, context):
+        if context is None:
+            return None
+        honest_vectors = context.get("honest_weights", [])
+        current_step = context.get("step", 0)
+        vectors = self.byzantine_attack.generate_byzantine_vectors(honest_vectors, None, current_step)
+        return vectors[0] if len(vectors) > 0 else None
 
     def compute_accuracy(self):
         return None
@@ -69,7 +74,17 @@ class DecByzantineWorker(BaseWorker):
         self.device = device
         self.epsilon = epsilon
 
-    def emit_message(self, target, honest_neighbors, pivot_params, honest_local_params):
+    def train(self):
+        return None
+
+    def aggregate(self, weights):
+        return None
+
+    def pull(self, context):
+        target = context["target"]
+        honest_neighbors = context["honest_neighbors"]
+        pivot_params = context["pivot_params"]
+        honest_local_params = context["honest_local_params"]
         W_i = self.network.weights(target)
         byz_neighbors = [k for k in self.network.neighbors(target) if k >= self.nb_honest]
         total_byz_weights = W_i[byz_neighbors].sum()
@@ -79,12 +94,6 @@ class DecByzantineWorker(BaseWorker):
             (W_i[honest_neighbors]).unsqueeze(0), differences
         )
         return byzantine_vector.squeeze(0)
-
-    def perform_local_step(self, current_step):
-        return None
-
-    def aggregate_and_update_parameters(self, *args, **kwargs):
-        return None
 
     def compute_accuracy(self):
         return None

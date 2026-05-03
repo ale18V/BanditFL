@@ -322,21 +322,21 @@ with tools.Context("training", "info"):
 				misc.store_result(fd_eval, current_step, avg_accuracy)
 
         #JS: honest workers perform local step
-		honest_local_params = [worker.perform_local_step(current_step) for worker in Workers]
+		honest_local_params = [worker.train() for worker in Workers]
 
 		# Update each honest node by consuming received messages from sampled neighbors.
 		for worker in Workers:
-			pivot_params = honest_local_params[worker.worker_id]
 			neighbor_indices = worker._sample_neighbors()
 			honest_neighbor_params = [honest_local_params[i] for i in neighbor_indices if i < args.nb_honests]
 			byz_neighbor_ids = [i for i in neighbor_indices if i >= args.nb_honests]
 			nb_selected_byz = len(byz_neighbor_ids)
+			worker.num_selected_byz.append(nb_selected_byz)
 			if nb_selected_byz > 0 and len(byz_workers) > 0:
-				byz_params = byz_workers[0].emit_messages(honest_neighbor_params, nb_selected_byz, current_step)
+				byz_params = [byz_workers[0].pull({"honest_weights": honest_neighbor_params, "step": current_step}) for _ in byz_neighbor_ids]
 			else:
 				byz_params = []
 			received_params = honest_neighbor_params + byz_params
-			worker.aggregate_and_update_parameters(pivot_params, received_params, nb_selected_byz, current_step)
+			worker.aggregate(received_params)
 
 		# Increase the step counter
 		current_step += 1

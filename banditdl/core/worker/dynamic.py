@@ -70,12 +70,15 @@ class DynamicWorker(HonestWorker):
             self.device,
         )
 
-    def aggregate_and_update_parameters(self, pivot_params, worker_params, nb_selected_byz, current_step):
-        self.num_selected_byz.append(nb_selected_byz)
+    def aggregate(self, weights):
+        if len(weights) == 0:
+            return None
+        pivot_params = self.pull(None)
         if self.rag:
-            self._aggregate_with_rag(pivot_params, worker_params)
+            self._aggregate_with_rag(pivot_params, weights)
         else:
-            self._aggregate_cgplus(pivot_params, worker_params, current_step)
+            self._aggregate_cgplus(pivot_params, weights, max(self._current_step - 1, 0))
+        return None
 
     def _sample_neighbors(self):
         indices_list = list(range(self.nb_honest + self.nb_byz))

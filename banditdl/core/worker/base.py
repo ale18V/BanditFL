@@ -14,12 +14,16 @@ class BaseWorker(ABC):
         self.is_byzantine = is_byzantine
 
     @abstractmethod
-    def perform_local_step(self, current_step):
-        """Execute local step and return the message payload for this round."""
+    def train(self):
+        """Execute local step and return optional message payload."""
 
     @abstractmethod
-    def aggregate_and_update_parameters(self, *args, **kwargs):
-        """Consume received messages and update local state."""
+    def aggregate(self, weights):
+        """Consume received weights and update local state."""
+
+    @abstractmethod
+    def pull(self, context):
+        """Return weights/message to neighbors, optionally using context."""
 
     @abstractmethod
     def compute_accuracy(self):
@@ -87,6 +91,7 @@ class HonestWorker(BaseWorker):
         self.numb_labels = numb_labels
         self.nb_local_steps = nb_local_steps
         self.num_selected_byz = []
+        self._current_step = 0
 
     def sample_batch(self, mode):
         try:
@@ -141,6 +146,14 @@ class HonestWorker(BaseWorker):
         for _ in range(self.nb_local_steps):
             self.set_gradient(self.compute_momentum())
             self.local_model_update(current_step)
+        return misc.flatten(self.model.parameters())
+
+    def train(self):
+        weights = self.perform_local_step(self._current_step)
+        self._current_step += 1
+        return weights
+
+    def pull(self, context=None):
         return misc.flatten(self.model.parameters())
 
     @torch.no_grad()
