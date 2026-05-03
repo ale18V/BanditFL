@@ -27,7 +27,7 @@ import threading
 import time
 import traceback
 
-from banditdl.core import tools
+from banditdl.utils import tools
 
 # ---------------------------------------------------------------------------- #
 # Unavailable user exception class

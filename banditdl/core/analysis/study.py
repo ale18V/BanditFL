@@ -1,5 +1,5 @@
 # coding: utf-8
-from banditdl.core import tools
+from banditdl.utils import tools
 if __name__ == "__main__":
   raise tools.UserException(f"Module {__file__!r} is not to be used as the main module")
 

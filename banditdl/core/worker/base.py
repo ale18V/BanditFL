@@ -3,7 +3,8 @@ from abc import ABC, abstractmethod
 import torch
 
 from banditdl.data import models
-from banditdl.core import common as misc
+from banditdl.utils.math_utils import clip_vector
+from banditdl.utils.tensor_utils import flatten, unflatten
 
 
 class BaseWorker(ABC):
@@ -75,7 +76,7 @@ class HonestWorker(BaseWorker):
         self.model = getattr(models, model)()
         self.model.to(self.device)
         self.model_shapes = [param.shape for param in self.model.parameters()]
-        self.model_size = len(misc.flatten(self.model.parameters()))
+        self.model_size = len(flatten(self.model.parameters()))
 
         if self.device == "cuda":
             self.model = torch.nn.DataParallel(self.model, device_ids=[0, 1])
@@ -104,7 +105,7 @@ class HonestWorker(BaseWorker):
         self.model.zero_grad()
         loss = self.loss(self.model(inputs), targets)
         loss.backward()
-        return misc.flatten([param.grad for param in self.model.parameters()])
+        return flatten([param.grad for param in self.model.parameters()])
 
     def compute_gradients(self):
         self.model.train()
@@ -124,7 +125,7 @@ class HonestWorker(BaseWorker):
         self.momentum_gradient.add_(self.compute_gradients(), alpha=1 - self.momentum)
 
         if self.gradient_clip is not None:
-            return misc.clip_vector(self.momentum_gradient, self.gradient_clip)
+            return clip_vector(self.momentum_gradient, self.gradient_clip)
 
         return self.momentum_gradient
 
@@ -146,7 +147,7 @@ class HonestWorker(BaseWorker):
         for _ in range(self.nb_local_steps):
             self.set_gradient(self.compute_momentum())
             self.local_model_update(current_step)
-        return misc.flatten(self.model.parameters())
+        return flatten(self.model.parameters())
 
     def train(self) -> None:
         self.perform_local_step(self._current_step)
@@ -154,7 +155,7 @@ class HonestWorker(BaseWorker):
         return None
 
     def pull(self, context=None) -> torch.Tensor:
-        return misc.flatten(self.model.parameters())
+        return flatten(self.model.parameters())
 
     @torch.no_grad()
     def compute_accuracy(self):
@@ -170,11 +171,11 @@ class HonestWorker(BaseWorker):
         return correct / total
 
     def set_gradient(self, gradient):
-        gradient = misc.unflatten(gradient, self.model_shapes)
+        gradient = unflatten(gradient, self.model_shapes)
         for j, param in enumerate(self.model.parameters()):
             param.grad = gradient[j].detach().clone()
 
     def set_model_parameters(self, params):
-        params = misc.unflatten(params, self.model_shapes)
+        params = unflatten(params, self.model_shapes)
         for j, param in enumerate(self.model.parameters()):
             param.data = params[j].data.detach().clone()

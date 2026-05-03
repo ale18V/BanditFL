@@ -8,8 +8,7 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 
-from banditdl.core import common as misc
-from banditdl.core import tools
+from banditdl.utils.results import make_result_file, store_result
 from banditdl.core.sampling import UniformNeighborSampler
 from banditdl.core.topology.fxgraph import generate_connected_graph
 from banditdl.core.topology.graph import CommunicationNetwork
@@ -140,15 +139,15 @@ def run_dynamic(params: dict, result_dir: pathlib.Path, seed: int, device: str) 
 
     fd_eval = (result_dir / "eval").open("w")
     fd_eval_worst = (result_dir / "eval_worst").open("w")
-    misc.make_result_file(fd_eval, ["Step number", "Cross-accuracy"])
-    misc.make_result_file(fd_eval_worst, ["Step number", "Cross-accuracy"])
+    make_result_file(fd_eval, ["Step number", "Cross-accuracy"])
+    make_result_file(fd_eval_worst, ["Step number", "Cross-accuracy"])
 
     accuracies = []
     for current_step in range(args.nb_steps + 1):
         if args.evaluation_delta > 0 and current_step % args.evaluation_delta == 0:
             accs = [w.compute_accuracy() for w in workers]
             accuracies.append(accs)
-            misc.store_result(fd_eval, current_step, sum(accs) / len(accs))
+            store_result(fd_eval, current_step, sum(accs) / len(accs))
 
         for w in workers:
             w.train()
@@ -168,7 +167,7 @@ def run_dynamic(params: dict, result_dir: pathlib.Path, seed: int, device: str) 
     if accuracies:
         worst_idx = min(range(len(workers)), key=lambda i: accuracies[-1][i])
         for i, accs in enumerate(accuracies):
-            misc.store_result(fd_eval_worst, i * args.evaluation_delta, accs[worst_idx])
+            store_result(fd_eval_worst, i * args.evaluation_delta, accs[worst_idx])
 
     np.save(os.path.join(result_dir, "accuracies.npy"), np.array(accuracies))
 
@@ -241,15 +240,15 @@ def run_fixed(params: dict, result_dir: pathlib.Path, seed: int, device: str) ->
 
     fd_eval = (result_dir / "eval").open("w")
     fd_eval_worst = (result_dir / "eval_worst").open("w")
-    misc.make_result_file(fd_eval, ["Step number", "Cross-accuracy"])
-    misc.make_result_file(fd_eval_worst, ["Step number", "Cross-accuracy"])
+    make_result_file(fd_eval, ["Step number", "Cross-accuracy"])
+    make_result_file(fd_eval_worst, ["Step number", "Cross-accuracy"])
 
     accuracies = []
     for current_step in range(args.nb_steps + 1):
         if args.evaluation_delta > 0 and current_step % args.evaluation_delta == 0:
             accs = [w.compute_accuracy() for w in workers]
             accuracies.append(accs)
-            misc.store_result(fd_eval, current_step, sum(accs) / len(accs))
+            store_result(fd_eval, current_step, sum(accs) / len(accs))
 
         for w in workers:
             w.train()
@@ -281,6 +280,6 @@ def run_fixed(params: dict, result_dir: pathlib.Path, seed: int, device: str) ->
     if accuracies:
         worst_idx = min(range(len(workers)), key=lambda i: accuracies[-1][i])
         for i, accs in enumerate(accuracies):
-            misc.store_result(fd_eval_worst, i * args.evaluation_delta, accs[worst_idx])
+            store_result(fd_eval_worst, i * args.evaluation_delta, accs[worst_idx])
 
     np.save(os.path.join(result_dir, "accuracies.npy"), np.array(accuracies))
