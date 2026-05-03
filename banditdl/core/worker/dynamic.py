@@ -1,7 +1,7 @@
 import torch
 
 from banditdl.core.robustness.aggregators import RobustAggregator
-from banditdl.core.sampling import make_neighbor_sampler
+from banditdl.core.sampling import make_neighbor_sampler, make_reward_strategy
 from banditdl.core.worker.base import HonestWorker
 
 
@@ -35,6 +35,7 @@ class DynamicWorker(HonestWorker):
         b_hat,
         nb_local_steps,
         neighbor_sampler=None,
+        reward_strategy=None,
     ):
         super().__init__(
             worker_id,
@@ -71,6 +72,9 @@ class DynamicWorker(HonestWorker):
             else nb_neighbors
         )
         self.neighbor_sampler = neighbor_sampler or make_neighbor_sampler("uniform")
+        self.reward_strategy = reward_strategy or make_reward_strategy(
+            "parameter_distance"
+        )
         self.robust_aggregator = RobustAggregator(
             aggregator,
             pre_aggregator,
@@ -103,10 +107,7 @@ class DynamicWorker(HonestWorker):
         if not hasattr(self.neighbor_sampler, "update"):
             return None
         pivot_params = self.pull(None)
-        rewards = [
-            1 / (1 + torch.norm(weight - pivot_params).item())
-            for weight in neighbor_weights
-        ]
+        rewards = self.reward_strategy.score(pivot_params, neighbor_weights)
         self.neighbor_sampler.update(neighbor_indices, rewards)
         return None
 

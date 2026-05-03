@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Sequence
 from pathlib import Path
+from textwrap import shorten
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -29,7 +30,9 @@ def _read_eval(path: Path) -> tuple[np.ndarray, np.ndarray]:
     return np.asarray(steps), np.asarray(values)
 
 
-def _load_series(run_dir: Path, metric: str, stat: str) -> tuple[np.ndarray, np.ndarray]:
+def _load_series(
+    run_dir: Path, metric: str, stat: str
+) -> tuple[np.ndarray, np.ndarray]:
     if metric == "accuracies":
         path = run_dir / "accuracies.npy"
         if not path.exists():
@@ -58,6 +61,25 @@ def _plot_series(ax, steps: np.ndarray, values: np.ndarray, label: str) -> None:
     ax.plot(steps, values, marker="o", linewidth=1.8, label=label)
 
 
+def _default_label(run_dir: Path, max_length: int) -> str:
+    tokens = run_dir.name.split("-")
+    keep_prefixes = (
+        "sampling_",
+        "degree_",
+        "sampler_",
+        "eps_",
+        "init_",
+        "seed_",
+    )
+    label_parts = [
+        token
+        for token in tokens
+        if token.startswith(keep_prefixes) or token in {"cs+", "cs_he", "gts"}
+    ]
+    label = ", ".join(label_parts) if label_parts else run_dir.name
+    return shorten(label, width=max_length, placeholder="...")
+
+
 def _aggregate_series(
     series: Sequence[tuple[np.ndarray, np.ndarray]],
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -79,14 +101,17 @@ def plot_runs(
     title: str | None,
     labels: Sequence[str] | None,
     aggregate: bool,
+    legend: str,
+    max_label_length: int,
 ) -> None:
-    fig, ax = plt.subplots(figsize=(7, 4))
+    fig, ax = plt.subplots(figsize=(7, 4.5))
     xlabel = "Evaluation index" if metric == "accuracies" else "Step"
 
     if aggregate:
         series = [_load_series(run_dir, metric, stat) for run_dir in run_dirs]
         steps, mean, std = _aggregate_series(series)
         label = labels[0] if labels else f"{metric} {stat}"
+        label = shorten(label, width=max_label_length, placeholder="...")
         _plot_series(ax, steps, mean, label)
         ax.fill_between(steps, mean - std, mean + std, alpha=0.2)
     else:
@@ -94,7 +119,10 @@ def plot_runs(
             raise SystemExit("--label must be passed once per run directory")
         for index, run_dir in enumerate(run_dirs):
             steps, values = _load_series(run_dir, metric, stat)
-            label = labels[index] if labels else run_dir.name
+            label = (
+                labels[index] if labels else _default_label(run_dir, max_label_length)
+            )
+            label = shorten(label, width=max_label_length, placeholder="...")
             _plot_series(ax, steps, values, label)
 
     ax.set_xlabel(xlabel)
@@ -102,24 +130,56 @@ def plot_runs(
     ax.set_ylim(0, 1)
     ax.grid(True, alpha=0.25)
     ax.set_title(title or ("Aggregate" if aggregate else "Result comparison"))
-    ax.legend()
-    fig.tight_layout()
+    if legend == "outside":
+        ax.legend(
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.18),
+            ncols=min(3, max(1, len(run_dirs))),
+            frameon=False,
+        )
+        fig.subplots_adjust(bottom=0.28)
+    elif legend == "best":
+        ax.legend()
+        fig.tight_layout()
+    elif legend == "none":
+        fig.tight_layout()
+    else:
+        raise ValueError(f"Unknown legend placement: {legend}")
     output.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output)
+    fig.savefig(output, dpi=160, bbox_inches="tight")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Plot a saved banditdl result directory.")
+    parser = argparse.ArgumentParser(
+        description="Plot a saved banditdl result directory."
+    )
     parser.add_argument(
         "run_dirs",
         nargs="+",
         type=Path,
         help="Directories containing eval/eval_worst/accuracies.npy",
     )
-    parser.add_argument("-o", "--output", type=Path, default=Path("plot.png"), help="Output image path")
-    parser.add_argument("--metric", choices=["accuracies", "eval", "eval_worst"], default="accuracies")
-    parser.add_argument("--stat", choices=["mean", "worst"], default="mean", help="Statistic used with accuracies.npy")
-    parser.add_argument("--aggregate", action="store_true", help="Plot mean +/- std across the given run directories")
+    parser.add_argument(
+        "-o", "--output", type=Path, default=Path("plot.png"), help="Output image path"
+    )
+    parser.add_argument(
+        "--metric", choices=["accuracies", "eval", "eval_worst"], default="accuracies"
+    )
+    parser.add_argument(
+        "--stat",
+        choices=["mean", "worst"],
+        default="mean",
+        help="Statistic used with accuracies.npy",
+    )
+    parser.add_argument(
+        "--aggregate",
+        action="store_true",
+        help="Plot mean +/- std across the given run directories",
+    )
+    parser.add_argument(
+        "--legend", choices=["outside", "best", "none"], default="outside"
+    )
+    parser.add_argument("--max-label-length", type=int, default=48)
     parser.add_argument("--title", default=None)
     parser.add_argument(
         "--label",
@@ -137,6 +197,8 @@ def main() -> None:
         args.title,
         args.label,
         args.aggregate,
+        args.legend,
+        args.max_label_length,
     )
 
 

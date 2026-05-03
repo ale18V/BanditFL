@@ -1,4 +1,12 @@
-from banditdl.core.sampling import MultiArmedBanditSampler, make_neighbor_sampler
+import pytest
+import torch
+
+from banditdl.core.sampling import (
+    MultiArmedBanditSampler,
+    ParameterDistanceReward,
+    make_neighbor_sampler,
+    make_reward_strategy,
+)
 
 
 def test_bandit_sampler_prefers_high_reward_arm():
@@ -11,3 +19,18 @@ def test_bandit_sampler_prefers_high_reward_arm():
 def test_neighbor_sampler_factory():
     assert make_neighbor_sampler("uniform").sample([1, 2, 3], 2)
     assert isinstance(make_neighbor_sampler("bandit"), MultiArmedBanditSampler)
+
+
+def test_parameter_distance_reward():
+    reward = ParameterDistanceReward()
+
+    assert reward.score(torch.tensor([1.0]), [torch.tensor([1.0])]) == [1.0]
+    assert reward.score(torch.tensor([1.0]), [torch.tensor([3.0])]) == pytest.approx(
+        [1 / 3]
+    )
+
+
+def test_reward_strategy_factory():
+    assert isinstance(
+        make_reward_strategy("parameter_distance"), ParameterDistanceReward
+    )

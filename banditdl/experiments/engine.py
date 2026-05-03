@@ -9,7 +9,7 @@ import numpy as np
 import torch
 
 from banditdl.utils.results import make_result_file, store_result
-from banditdl.core.sampling import make_neighbor_sampler
+from banditdl.core.sampling import make_neighbor_sampler, make_reward_strategy
 from banditdl.core.topology.fxgraph import generate_connected_graph
 from banditdl.core.topology.graph import CommunicationNetwork
 from banditdl.core.worker.byzantine import ByzantineWorker, DecByzantineWorker
@@ -56,6 +56,7 @@ def _make_args(
     args.setdefault("neighbor-sampler", "uniform")
     args.setdefault("bandit-epsilon", 0.1)
     args.setdefault("bandit-initial-value", 0.0)
+    args.setdefault("bandit-reward", "parameter_distance")
     args["result-directory"] = str(result_dir)
     args["seed"] = seed
     args["device"] = device
@@ -72,7 +73,9 @@ def _init_workers_dynamic(args, train_loader_dict, test_loader):
             args.neighbor_sampler,
             epsilon=args.bandit_epsilon,
             initial_value=args.bandit_initial_value,
+            seed=args.seed + worker_id,
         )
+        reward_strategy = make_reward_strategy(args.bandit_reward)
         w = DynamicWorker(
             worker_id,
             train_loader_dict[worker_id],
@@ -101,6 +104,7 @@ def _init_workers_dynamic(args, train_loader_dict, test_loader):
             args.b_hat,
             args.nb_local_steps,
             neighbor_sampler=neighbor_sampler,
+            reward_strategy=reward_strategy,
         )
         if worker_id > 0:
             w.model.load_state_dict(workers[0].model.state_dict())

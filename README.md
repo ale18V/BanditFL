@@ -83,6 +83,7 @@ Top-level:
 - `neighbor_sampler`: `uniform`, `bandit`, or `epsilon_greedy`
 - `bandit_epsilon`: exploration rate for the bandit sampler
 - `bandit_initial_value`: initial arm value for unseen neighbors
+- `bandit_reward`: reward strategy for bandit feedback
 
 Topology mapping:
 - dynamic mode: uses `sampling` ratio (also passed directly to dynamic workers)
@@ -159,6 +160,8 @@ Useful options:
 - `--metric eval`: plot average accuracy from `eval`.
 - `--metric eval_worst`: plot worst-worker accuracy from `eval_worst`.
 - `--stat mean|worst`: choose mean or worst when plotting `accuracies.npy`.
+- `--legend outside|best|none`: choose legend placement; default keeps it below the plot.
+- `--max-label-length 48`: cap auto-generated labels.
 
 ## Runtime Architecture
 
@@ -300,7 +303,9 @@ uv run -m banditdl \
 
 Current bandit feedback:
 - each neighbor is one arm,
+- MABWiser provides the epsilon-greedy bandit implementation,
 - dynamic workers update selected arms after receiving neighbor weights,
-- reward is `1 / (1 + parameter_distance)` against the local model before aggregation.
+- reward is selected through a strategy object; the default is `parameter_distance`,
+- `parameter_distance` uses `1 / (1 + parameter_distance)` against the local model before aggregation.
 
-This is intentionally small: sampler choice and bandit parameters are Hydra-controlled, while reward design remains isolated in `DynamicWorker.observe_neighbors`.
+This is intentionally small: sampler choice and bandit parameters are Hydra-controlled, while reward design remains isolated behind the reward strategy API in `banditdl/core/sampling.py`.

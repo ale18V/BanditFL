@@ -65,6 +65,7 @@ def main(cfg: DictConfig) -> None:
     params["neighbor-sampler"] = cfg.train.neighbor_sampler
     params["bandit-epsilon"] = float(cfg.train.get("bandit_epsilon", 0.1))
     params["bandit-initial-value"] = float(cfg.train.get("bandit_initial_value", 0.0))
+    params["bandit-reward"] = cfg.train.get("bandit_reward", "parameter_distance")
 
     byz_budget_raw = cfg.profile.get("byzantine_budget")
     byzantine_budget = int(
