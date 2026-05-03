@@ -23,7 +23,7 @@ uv run -m banditdl
 Example overrides:
 
 ```bash
-uv run -m banditdl profile=mnist_dynamic profile.nb_neighbors=5 profile.byzcount=1 seed=0
+uv run -m banditdl profile=mnist_dynamic profile.nodes=100 profile.sampling=0.05 train.neighbor_sampler=uniform seed=0
 ```
 
 ## Run Sweeps (Hydra Multirun)
@@ -47,8 +47,9 @@ uv run -m banditdl -m profile=mnist_fixed
 uv run -m banditdl -m \
   profile=mnist_dynamic \
   seed=0,1 \
-  profile.nb_neighbors=3,5 \
-  profile.attack=ALIE,SF \
+  profile.nodes=50,100 \
+  profile.sampling=0.03,0.05 \
+  train.neighbor_sampler=uniform \
   profile.nb_local_steps=1,3
 ```
 
@@ -69,17 +70,20 @@ Top-level:
 
 `profile` fields:
 - `mode`: `dynamic` or `fixed`
-- `dataset`, `model`, `nb_workers`, `alpha`
+- `dataset`, `model`, `nodes`, `sampling`, `alpha`
 - `result_directory`, `plot_directory`
 - `byzcount`, `b_hat`
-- `nb_neighbors`, `nb_local_steps`
+- `nb_local_steps`
 - `attack`, `method`
 - `params_common` (forwarded as CLI args to training runner)
 - `hydra.sweeper.params` (preset sweep matrix)
 
 `train` fields:
 - `train_program`: module path (`train_p2p` or `fx_train_p2p`)
-- `neighbor_sampler`: currently `uniform`
+- `neighbor_sampler`: e.g. `uniform` (plug bandit samplers here)
+
+Derived runtime value:
+- `nb_neighbors = round((nodes - 1) * sampling)` clamped to `[1, nodes-1]`
 
 Inspect resolved config:
 
@@ -103,8 +107,9 @@ hydra:
   sweeper:
     params:
       seed: 0,1
-      profile.nb_neighbors: 3,5,7
-      profile.attack: ALIE,SF
+      profile.nodes: 50,100
+      profile.sampling: 0.03,0.05
+      profile.nb_local_steps: 1,3
 ```
 
 Run it:

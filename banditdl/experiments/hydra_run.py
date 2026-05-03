@@ -33,11 +33,12 @@ def _module_from_program_path(program_path: str) -> str:
 
 def _run_name(cfg: DictConfig, b_hat: int) -> str:
     base = (
-        f"{cfg.profile.dataset}-n_{cfg.profile.nb_workers}"
+        f"{cfg.profile.dataset}-n_{cfg.profile.nodes}"
         f"-model_{cfg.profile.model}"
         f"-attack_{cfg.profile.attack}"
         f"-agg_{cfg.profile.params_common.aggregator}"
-        f"-neighbors_{cfg.profile.nb_neighbors}"
+        f"-sampling_{cfg.profile.sampling}"
+        f"-sampler_{cfg.train.neighbor_sampler}"
         f"-f_{cfg.profile.byzcount}"
         f"-alpha_{cfg.profile.alpha}"
         f"-b_hat_{b_hat}"
@@ -56,14 +57,19 @@ def main(cfg: DictConfig) -> None:
 
     # Build one concrete training run from config.
     params: dict[str, Any] = dict(params_common)
+    nodes = int(cfg.profile.nodes)
+    sampling = float(cfg.profile.sampling)
+    nb_neighbors = max(1, min(nodes - 1, int(round((nodes - 1) * sampling))))
+
     params["dataset"] = cfg.profile.dataset
     params["model"] = cfg.profile.model
-    params["nb-workers"] = int(cfg.profile.nb_workers)
+    params["nb-workers"] = nodes
     params["dirichlet-alpha"] = float(cfg.profile.alpha)
     params["nb-decl-byz"] = int(cfg.profile.byzcount)
     params["nb-real-byz"] = int(cfg.profile.byzcount)
-    params["nb-neighbors"] = int(cfg.profile.nb_neighbors)
-    params["attack"] = cfg.profile.attack
+    params["nb-neighbors"] = nb_neighbors
+    if cfg.profile.attack is not None:
+        params["attack"] = cfg.profile.attack
     params["nb-local-steps"] = int(cfg.profile.nb_local_steps)
     params["neighbor-sampler"] = cfg.train.neighbor_sampler
 

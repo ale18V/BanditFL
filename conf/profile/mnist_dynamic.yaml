@@ -1,15 +1,15 @@
 mode: dynamic
 dataset: mnist
 model: cnn_mnist
-nb_workers: 100
+nodes: 100
+sampling: 0.03
 alpha: 1
 result_directory: results_mnist/results-data-mnist-iclr
 plot_directory: results_mnist/results-plot-mnist-iclr
-byzcount: 1
-b_hat: 1
-nb_neighbors: 3
+byzcount: 0
+b_hat: 0
 nb_local_steps: 1
-attack: ALIE
+attack: null
 method: null
 params_common:
   batch-size: 25
@@ -27,8 +27,6 @@ hydra:
   sweeper:
     params:
       seed: 0,1
-      profile.byzcount: 1,0
-      profile.b_hat: 1,0
-      profile.nb_neighbors: 3,4,5
-      profile.attack: ALIE
+      profile.nodes: 50,100
+      profile.sampling: 0.03,0.05
       profile.nb_local_steps: 1,3

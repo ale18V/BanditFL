@@ -1,15 +1,15 @@
 mode: fixed
 dataset: mnist
 model: cnn_mnist
-nb_workers: 30
+nodes: 30
+sampling: 0.52
 alpha: 1
 result_directory: results_mnist/results-data-mnist-fx
 plot_directory: results_mnist/results-plot-mnist-fx
-byzcount: 6
-b_hat: 6
-nb_neighbors: 15
+byzcount: 0
+b_hat: 0
 nb_local_steps: 1
-attack: dissensus
+attack: null
 method: cs+
 params_common:
   batch-size: 25
@@ -27,9 +27,7 @@ hydra:
     params:
       train: fixed
       seed: 0,1
-      profile.byzcount: 6,3,0
-      profile.b_hat: 6,3,0
-      profile.nb_neighbors: 15
-      profile.attack: dissensus,ALIE,SF,FOE
+      profile.nodes: 30
+      profile.sampling: 0.52
       profile.nb_local_steps: 1
       profile.method: cs+
