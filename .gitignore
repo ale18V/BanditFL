@@ -1,5 +1,6 @@
 .hydra_runs/
 .hydra_multirun/
 results*/
+plots/
 *__pycache__
 *datasets
