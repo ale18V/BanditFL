@@ -1,0 +1,5 @@
+mode: fixed
+nodes: 30
+degree: 15
+method: cs+
+neighbor_sampler: uniform

@@ -1,18 +1,9 @@
 # @package _global_
-profile:
-  mode: fixed
+local:
   dataset: mnist
   model: cnn_mnist
-  nodes: 30
-  degree: 15
   alpha: 1
-  result_directory: results_mnist/results-data-mnist-fx
-  plot_directory: results_mnist/results-plot-mnist-fx
-  byzcount: 0
-  byzantine_budget: 0
   nb_local_steps: 1
-  attack: null
-  method: cs+
   params_common:
     batch-size: 25
     loss: NLLLoss
@@ -23,13 +14,22 @@ profile:
     pre-aggregator: nnm
     aggregator: trmean
     evaluation-delta: 20
+topology:
+  mode: fixed
+  nodes: 30
+  degree: 15
+  method: cs+
+  neighbor_sampler: uniform
+adversary:
+  byzcount: 0
+  byzantine_budget: 0
+  attack: null
 
 hydra:
   sweeper:
     params:
-      train: fixed
       seed: 0,1
-      profile.nodes: 30
-      profile.degree: 15
-      profile.nb_local_steps: 1
-      profile.method: cs+
+      topology.nodes: 30
+      topology.degree: 15
+      local.nb_local_steps: 1
+      topology.method: cs+

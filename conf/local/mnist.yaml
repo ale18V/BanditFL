@@ -1,0 +1,15 @@
+dataset: mnist
+model: cnn_mnist
+alpha: 1
+nb_local_steps: 1
+params_common:
+  batch-size: 25
+  loss: NLLLoss
+  weight-decay: 1e-4
+  nb-steps: 200
+  momentum-worker: 0.9
+  numb-labels: 10
+  pre-aggregator: nnm
+  aggregator: trmean
+  evaluation-delta: 20
+  rag: true

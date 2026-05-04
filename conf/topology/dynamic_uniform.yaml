@@ -1,0 +1,4 @@
+mode: dynamic
+nodes: 20
+sampling: 0.2
+neighbor_sampler: uniform

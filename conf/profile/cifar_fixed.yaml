@@ -1,18 +1,9 @@
 # @package _global_
-profile:
-  mode: fixed
+local:
   dataset: cifar10
   model: cnn_cifar_old
-  nodes: 20
-  degree: 6
   alpha: 1
-  result_directory: results_cifar10/results-data-cifar10-fx-dissensus
-  plot_directory: results_cifar10/results-plot-cifar10-fx-dissensus
-  byzcount: 0
-  byzantine_budget: 0
   nb_local_steps: 3
-  attack: null
-  method: cs+
   params_common:
     batch-size: 50
     loss: NLLLoss
@@ -27,13 +18,22 @@ profile:
     mimic-learning-phase: 400
     pre-aggregator: nnm
     aggregator: trmean
+topology:
+  mode: fixed
+  nodes: 20
+  degree: 6
+  method: cs+
+  neighbor_sampler: uniform
+adversary:
+  byzcount: 0
+  byzantine_budget: 0
+  attack: null
 
 hydra:
   sweeper:
     params:
-      train: fixed
       seed: 0,1
-      profile.nodes: 20
-      profile.degree: 6
-      profile.nb_local_steps: 3,1
-      profile.method: cs+,gts,cs_he
+      topology.nodes: 20
+      topology.degree: 6
+      local.nb_local_steps: 3,1
+      topology.method: cs+,gts,cs_he

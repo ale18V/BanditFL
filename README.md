@@ -23,7 +23,7 @@ uv run -m banditdl
 Example overrides:
 
 ```bash
-uv run -m banditdl profile=mnist_dynamic profile.nodes=100 profile.sampling=0.05 train.neighbor_sampler=uniform seed=0
+uv run -m banditdl local=mnist topology=dynamic_uniform topology.nodes=100 topology.sampling=0.05 seed=0
 ```
 
 Runs print lightweight progress to stdout: start metadata, result directory, periodic decentralized-learning rounds, evaluation accuracy when available, and completion.
@@ -32,9 +32,9 @@ Runs print lightweight progress to stdout: start metadata, result directory, per
 
 Hydra does orchestration. The custom in-repo scheduler is no longer the main path.
 
-### Option A: Preset matrix from profile
+### Option A: Preset Matrix From Compatibility Profile
 
-Each profile contains its own `hydra.sweeper.params` matrix.
+Profiles are compatibility presets that compose local training, topology/sampling, adversary, and a sweep matrix.
 
 ```bash
 uv run -m banditdl -m profile=cifar_dynamic
@@ -47,16 +47,31 @@ uv run -m banditdl -m profile=mnist_fixed
 
 ```bash
 uv run -m banditdl -m \
-  profile=mnist_dynamic \
+  local=mnist \
+  topology=dynamic_uniform \
   seed=0,1 \
-  profile.nodes=50,100 \
-  profile.sampling=0.03,0.05 \
-  train.neighbor_sampler=uniform \
-  profile.nb_local_steps=1,3
+  topology.nodes=50,100 \
+  topology.sampling=0.03,0.05 \
+  topology.neighbor_sampler=uniform,bandit \
+  local.nb_local_steps=1,3
 ```
 
-## Existing Profiles
+## Existing Config Groups
 
+Local training:
+- `mnist`
+- `cifar10`
+
+Topology/sampling:
+- `dynamic_uniform`
+- `dynamic_bandit`
+- `fixed_cs`
+
+Adversary:
+- `none`
+- `alie`
+
+Compatibility profiles:
 - `cifar_dynamic`
 - `mnist_dynamic`
 - `cifar_fixed`
@@ -74,46 +89,50 @@ uv run -m banditdl --cfg job
 
 ### Top-Level Config
 
-- `profile`: experiment profile config group. Existing values: `mnist_dynamic`, `cifar_dynamic`, `mnist_fixed`, `cifar_fixed`.
-- `train`: training/sampler config group. Existing values: `dynamic`, `fixed`.
+- `local`: local ML setup config group.
+- `topology`: decentralized topology and neighbor sampling config group.
+- `adversary`: Byzantine/adversarial setup config group.
+- `profile`: optional compatibility preset config group.
 - `seed`: random seed. Use comma-separated values under `-m` for sweeps.
 - `device`: `auto`, `cpu`, or a torch device string such as `cuda`.
+- `result_directory`: root directory for saved run artifacts.
+- `plot_directory`: output directory convention for plots. Plotting itself uses `scripts/plot_results.py`.
 
-### Profile Config
+### Local Training Config
 
-Profiles are in `conf/profile/`. They define dataset, topology, training defaults, result paths, and preset sweep matrices.
+Local configs are in `conf/local/`. They describe dataset/model/optimizer-style ML parameters.
 
-- `mode`: topology mode. `dynamic` resamples neighbors every round. `fixed` builds one graph.
 - `dataset`: dataset name passed to the loader. Common values: `mnist`, `cifar10`.
 - `model`: model constructor from `banditdl/data/models.py`, for example `cnn_mnist` or `cnn_cifar_old`.
+- `alpha`: Dirichlet data heterogeneity parameter passed as `dirichlet-alpha`.
+- `nb_local_steps`: local SGD steps per communication round.
+- `params_common`: training hyperparameters passed to the engine.
+
+### Topology And Sampling Config
+
+Topology configs are in `conf/topology/`.
+
+- `mode`: topology mode. `dynamic` resamples neighbors every round. `fixed` builds one graph.
 - `nodes`: total simulated participants, including Byzantine participants.
 - `sampling`: dynamic-mode sampling ratio. The dynamic worker samples about `round((nodes - 1) * sampling)` neighbors.
-- `degree`: fixed-mode graph degree target. Used only by fixed profiles.
-- `alpha`: Dirichlet data heterogeneity parameter passed as `dirichlet-alpha`.
-- `result_directory`: root directory for per-run saved artifacts.
-- `plot_directory`: legacy profile field; current plotting uses `scripts/plot_results.py`.
-- `byzcount`: number of declared and real Byzantine workers currently instantiated by the Hydra adapter.
-- `byzantine_budget`: robustness budget `b_hat`. If unset/null, defaults to `byzcount`.
-- `nb_local_steps`: local SGD steps per communication round.
-- `attack`: Byzantine attack name or `null`. Available attacks include `SF`, `LF`, `FOE`, `ALIE`, `mimic`, `auto_ALIE`, `auto_FOE`, `inf`.
+- `degree`: fixed-mode graph degree target.
 - `method`: fixed-graph summation method. Current values used by fixed profiles: `cs+`, `cs_he`, `gts`.
-- `params_common`: training hyperparameters passed to the engine.
-- `hydra.sweeper.params`: preset multirun matrix for `uv run -m banditdl -m profile=<name>`.
-
-### Train Config
-
-Train configs are in `conf/train/`.
-
 - `neighbor_sampler`: neighbor selection strategy. Values: `uniform`, `bandit`, `epsilon_greedy`.
 - `bandit_epsilon`: epsilon-greedy exploration rate. Used by `bandit`/`epsilon_greedy`.
 - `bandit_initial_value`: initial reward estimate for unseen arms.
 - `bandit_reward`: reward strategy. Current value: `parameter_distance`.
 
-`fixed.yaml` currently only defines `neighbor_sampler: uniform`; fixed mode does not use dynamic sampling.
+### Adversary Config
+
+Adversary configs are in `conf/adversary/`.
+
+- `byzcount`: number of declared and real Byzantine workers currently instantiated by the Hydra adapter.
+- `byzantine_budget`: robustness budget `b_hat`. If unset/null, defaults to `byzcount`.
+- `attack`: Byzantine attack name or `null`. Available attacks include `SF`, `LF`, `FOE`, `ALIE`, `mimic`, `auto_ALIE`, `auto_FOE`, `inf`.
 
 ### Common Training Params
 
-These live under `profile.params_common`.
+These live under `local.params_common`.
 
 - `batch-size`: training batch size.
 - `batch-size-test`: test batch size. Defaults to `100` if omitted.
@@ -151,10 +170,11 @@ Ad-hoc sweep:
 
 ```bash
 uv run -m banditdl -m \
-  profile=mnist_dynamic \
-  profile.nodes=50,100 \
-  profile.sampling=0.03,0.05 \
-  train.neighbor_sampler=uniform,bandit \
+  local=mnist,cifar10 \
+  topology=dynamic_uniform,dynamic_bandit \
+  topology.nodes=50,100 \
+  topology.sampling=0.03,0.05 \
+  adversary=none \
   seed=0,1,2
 ```
 
@@ -162,23 +182,44 @@ Hydra takes the Cartesian product of comma-separated override values.
 
 ## How To Create A New Experiment
 
-1. Copy a profile in `conf/profile/`.
-2. Set scalar defaults for single-run behavior.
-3. Add/update `hydra.sweeper.params` in the same profile for preset matrix sweeps.
+1. Add or copy a config in `conf/local/`, `conf/topology/`, or `conf/adversary/`.
+2. Compose them from the CLI with Hydra overrides.
+3. Add a compatibility profile in `conf/profile/` only if you want a named preset sweep.
 
 Example:
 
 ```yaml
-# conf/profile/my_new_profile.yaml
+# conf/topology/my_bandit.yaml
 mode: dynamic
+nodes: 100
+sampling: 0.05
+neighbor_sampler: bandit
+bandit_epsilon: 0.1
+bandit_initial_value: 0.0
+bandit_reward: parameter_distance
+```
+
+Run it:
+
+```bash
+uv run -m banditdl local=mnist topology=my_bandit adversary=none
+```
+
+Example compatibility profile:
+
+```yaml
+# conf/profile/my_new_profile.yaml
+# @package _global_
+local:
+  dataset: mnist
 ...
 hydra:
   sweeper:
     params:
       seed: 0,1
-      profile.nodes: 50,100
-      profile.sampling: 0.03,0.05
-      profile.nb_local_steps: 1,3
+      topology.nodes: 50,100
+      topology.sampling: 0.03,0.05
+      local.nb_local_steps: 1,3
 ```
 
 Run it:
@@ -242,7 +283,7 @@ flowchart TD
     A[User: uv run -m banditdl ...] --> B[banditdl.__main__]
     B --> C[experiments.hydra_run]
     C --> D[Hydra config composition
-conf/config.yaml + profile/train]
+conf/config.yaml + local/topology/adversary]
 
     D --> E{Hydra mode}
     E -->|single run| F[One composed config]
@@ -362,10 +403,10 @@ Use the multi-armed bandit sampler in dynamic mode:
 
 ```bash
 uv run -m banditdl \
-  profile=mnist_dynamic \
-  train.neighbor_sampler=bandit \
-  train.bandit_epsilon=0.1 \
-  profile.sampling=0.05 \
+  local=mnist \
+  topology=dynamic_bandit \
+  topology.bandit_epsilon=0.1 \
+  topology.sampling=0.05 \
   seed=0
 ```
 

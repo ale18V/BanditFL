@@ -1,18 +1,9 @@
 # @package _global_
-profile:
-  mode: dynamic
+local:
   dataset: cifar10
   model: cnn_cifar_old
-  nodes: 20
-  sampling: 0.32
   alpha: 1
-  result_directory: results_cifar10/results-data-cifar10-final
-  plot_directory: results_cifar10/results-plot-cifar10-final
-  byzcount: 0
-  byzantine_budget: 0
   nb_local_steps: 1
-  attack: null
-  method: null
   params_common:
     batch-size: 50
     loss: NLLLoss
@@ -28,11 +19,20 @@ profile:
     pre-aggregator: nnm
     aggregator: trmean
     rag: true
+topology:
+  mode: dynamic
+  nodes: 20
+  sampling: 0.32
+  neighbor_sampler: uniform
+adversary:
+  byzcount: 0
+  byzantine_budget: 0
+  attack: null
 
 hydra:
   sweeper:
     params:
       seed: 0,1
-      profile.nodes: 20
-      profile.sampling: 0.32
-      profile.nb_local_steps: 1,3
+      topology.nodes: 20
+      topology.sampling: 0.32
+      local.nb_local_steps: 1,3
