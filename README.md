@@ -60,40 +60,103 @@ uv run -m banditdl -m \
 - `cifar_fixed`
 - `mnist_fixed`
 
-## Hydra Parameters Handled
+## Config Reference
 
-Top-level:
-- `profile` (config group)
-- `train` (config group)
-- `seed`
-- `device`
+Hydra config lives in `conf/`. The main entry point is `conf/config.yaml`.
 
-`profile` fields:
-- `mode`: `dynamic` or `fixed`
-- `dataset`, `model`, `nodes`, `alpha`
-- `sampling` (dynamic mode) or `degree` (fixed mode)
-- `result_directory`, `plot_directory`
-- `byzcount`, `byzantine_budget`
-- `nb_local_steps`
-- `attack`, `method`
-- `params_common` (training hyperparameters passed to the engine)
-- `hydra.sweeper.params` (preset sweep matrix)
-
-`train` fields:
-- `neighbor_sampler`: `uniform`, `bandit`, or `epsilon_greedy`
-- `bandit_epsilon`: exploration rate for the bandit sampler
-- `bandit_initial_value`: initial arm value for unseen neighbors
-- `bandit_reward`: reward strategy for bandit feedback
-
-Topology mapping:
-- dynamic mode: uses `sampling` ratio (also passed directly to dynamic workers)
-- fixed mode: uses explicit `degree` from config
-
-Inspect resolved config:
+Inspect the resolved config before launching a large run:
 
 ```bash
 uv run -m banditdl --cfg job
 ```
+
+### Top-Level Config
+
+- `profile`: experiment profile config group. Existing values: `mnist_dynamic`, `cifar_dynamic`, `mnist_fixed`, `cifar_fixed`.
+- `train`: training/sampler config group. Existing values: `dynamic`, `fixed`.
+- `seed`: random seed. Use comma-separated values under `-m` for sweeps.
+- `device`: `auto`, `cpu`, or a torch device string such as `cuda`.
+
+### Profile Config
+
+Profiles are in `conf/profile/`. They define dataset, topology, training defaults, result paths, and preset sweep matrices.
+
+- `mode`: topology mode. `dynamic` resamples neighbors every round. `fixed` builds one graph.
+- `dataset`: dataset name passed to the loader. Common values: `mnist`, `cifar10`.
+- `model`: model constructor from `banditdl/data/models.py`, for example `cnn_mnist` or `cnn_cifar_old`.
+- `nodes`: total simulated participants, including Byzantine participants.
+- `sampling`: dynamic-mode sampling ratio. The dynamic worker samples about `round((nodes - 1) * sampling)` neighbors.
+- `degree`: fixed-mode graph degree target. Used only by fixed profiles.
+- `alpha`: Dirichlet data heterogeneity parameter passed as `dirichlet-alpha`.
+- `result_directory`: root directory for per-run saved artifacts.
+- `plot_directory`: legacy profile field; current plotting uses `scripts/plot_results.py`.
+- `byzcount`: number of declared and real Byzantine workers currently instantiated by the Hydra adapter.
+- `byzantine_budget`: robustness budget `b_hat`. If unset/null, defaults to `byzcount`.
+- `nb_local_steps`: local SGD steps per communication round.
+- `attack`: Byzantine attack name or `null`. Available attacks include `SF`, `LF`, `FOE`, `ALIE`, `mimic`, `auto_ALIE`, `auto_FOE`, `inf`.
+- `method`: fixed-graph summation method. Current values used by fixed profiles: `cs+`, `cs_he`, `gts`.
+- `params_common`: training hyperparameters passed to the engine.
+- `hydra.sweeper.params`: preset multirun matrix for `uv run -m banditdl -m profile=<name>`.
+
+### Train Config
+
+Train configs are in `conf/train/`.
+
+- `neighbor_sampler`: neighbor selection strategy. Values: `uniform`, `bandit`, `epsilon_greedy`.
+- `bandit_epsilon`: epsilon-greedy exploration rate. Used by `bandit`/`epsilon_greedy`.
+- `bandit_initial_value`: initial reward estimate for unseen arms.
+- `bandit_reward`: reward strategy. Current value: `parameter_distance`.
+
+`fixed.yaml` currently only defines `neighbor_sampler: uniform`; fixed mode does not use dynamic sampling.
+
+### Common Training Params
+
+These live under `profile.params_common`.
+
+- `batch-size`: training batch size.
+- `batch-size-test`: test batch size. Defaults to `100` if omitted.
+- `loss`: torch loss class name, for example `NLLLoss`.
+- `learning-rate`: SGD learning rate. Defaults to `0.5` if omitted.
+- `learning-rate-decay`: decay scale used by the worker learning-rate schedule.
+- `learning-rate-decay-delta`: step interval for learning-rate decay checks.
+- `weight-decay`: SGD weight decay.
+- `momentum-worker`: worker momentum.
+- `nb-steps`: number of communication/training rounds.
+- `evaluation-delta`: evaluate every N rounds.
+- `numb-labels`: number of dataset labels.
+- `pre-aggregator`: optional first-stage robust aggregation rule, commonly `nnm`.
+- `aggregator`: robust aggregator, commonly `trmean`.
+- `rag`: dynamic-mode robust aggregation flag. Dynamic Hydra runs force this to `true`.
+- `mimic-learning-phase`: optional learning phase length for mimic attacks.
+- `bucket-size`: robust aggregation bucket size. Defaults to `1`.
+- `gradient-clip`: optional gradient clipping threshold.
+- `server-clip`: optional server clipping flag.
+- `hetero`: dataset heterogeneity flag. Defaults to `false`.
+- `distinct-data`: give workers distinct local datasets. Defaults to `false`.
+- `nb-datapoints`: local datapoint count for distinct-data setups.
+
+Available robust aggregators include `average`, `trmean`, `median`, `geometric_median`, `krum`, `multi_krum`, `nnm`, `bucketing`, `pmk`, `cc`, `mda`, `mva`, `monna`, `meamed`.
+
+### Sweep Syntax
+
+Preset profile sweep:
+
+```bash
+uv run -m banditdl -m profile=mnist_dynamic
+```
+
+Ad-hoc sweep:
+
+```bash
+uv run -m banditdl -m \
+  profile=mnist_dynamic \
+  profile.nodes=50,100 \
+  profile.sampling=0.03,0.05 \
+  train.neighbor_sampler=uniform,bandit \
+  seed=0,1,2
+```
+
+Hydra takes the Cartesian product of comma-separated override values.
 
 ## How To Create A New Experiment
 
