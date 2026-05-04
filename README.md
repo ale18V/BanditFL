@@ -32,18 +32,7 @@ Runs print lightweight progress to stdout: start metadata, result directory, per
 
 Hydra does orchestration. The custom in-repo scheduler is no longer the main path.
 
-### Option A: Preset Matrix From Compatibility Profile
-
-Profiles are compatibility presets that compose local training, topology/sampling, adversary, and a sweep matrix.
-
-```bash
-uv run -m banditdl -m profile=cifar_dynamic
-uv run -m banditdl -m profile=mnist_dynamic
-uv run -m banditdl -m profile=cifar_fixed
-uv run -m banditdl -m profile=mnist_fixed
-```
-
-### Option B: Ad-hoc sweep from CLI
+### Ad-hoc Sweep From CLI
 
 ```bash
 uv run -m banditdl -m \
@@ -71,12 +60,6 @@ Adversary:
 - `none`
 - `alie`
 
-Compatibility profiles:
-- `cifar_dynamic`
-- `mnist_dynamic`
-- `cifar_fixed`
-- `mnist_fixed`
-
 ## Config Reference
 
 Hydra config lives in `conf/`. The main entry point is `conf/config.yaml`.
@@ -92,7 +75,6 @@ uv run -m banditdl --cfg job
 - `local`: local ML setup config group.
 - `topology`: decentralized topology and neighbor sampling config group.
 - `adversary`: Byzantine/adversarial setup config group.
-- `profile`: optional compatibility preset config group.
 - `seed`: random seed. Use comma-separated values under `-m` for sweeps.
 - `device`: `auto`, `cpu`, or a torch device string such as `cuda`.
 - `result_directory`: root directory for saved run artifacts.
@@ -116,7 +98,7 @@ Topology configs are in `conf/topology/`.
 - `nodes`: total simulated participants, including Byzantine participants.
 - `sampling`: dynamic-mode sampling ratio. The dynamic worker samples about `round((nodes - 1) * sampling)` neighbors.
 - `degree`: fixed-mode graph degree target.
-- `method`: fixed-graph summation method. Current values used by fixed profiles: `cs+`, `cs_he`, `gts`.
+- `method`: fixed-graph summation method. Current values: `cs+`, `cs_he`, `gts`.
 - `neighbor_sampler`: neighbor selection strategy. Values: `uniform`, `bandit`, `epsilon_greedy`.
 - `bandit_epsilon`: epsilon-greedy exploration rate. Used by `bandit`/`epsilon_greedy`.
 - `bandit_initial_value`: initial reward estimate for unseen arms.
@@ -160,12 +142,6 @@ Available robust aggregators include `average`, `trmean`, `median`, `geometric_m
 
 ### Sweep Syntax
 
-Preset profile sweep:
-
-```bash
-uv run -m banditdl -m profile=mnist_dynamic
-```
-
 Ad-hoc sweep:
 
 ```bash
@@ -184,7 +160,6 @@ Hydra takes the Cartesian product of comma-separated override values.
 
 1. Add or copy a config in `conf/local/`, `conf/topology/`, or `conf/adversary/`.
 2. Compose them from the CLI with Hydra overrides.
-3. Add a compatibility profile in `conf/profile/` only if you want a named preset sweep.
 
 Example:
 
@@ -203,29 +178,6 @@ Run it:
 
 ```bash
 uv run -m banditdl local=mnist topology=my_bandit adversary=none
-```
-
-Example compatibility profile:
-
-```yaml
-# conf/profile/my_new_profile.yaml
-# @package _global_
-local:
-  dataset: mnist
-...
-hydra:
-  sweeper:
-    params:
-      seed: 0,1
-      topology.nodes: 50,100
-      topology.sampling: 0.03,0.05
-      local.nb_local_steps: 1,3
-```
-
-Run it:
-
-```bash
-uv run -m banditdl -m profile=my_new_profile
 ```
 
 ## Plot Saved Results

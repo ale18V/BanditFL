@@ -2,7 +2,6 @@ defaults:
   - local: mnist
   - topology: dynamic_uniform
   - adversary: none
-  - optional profile: null
   - _self_
 
 seed: 0
