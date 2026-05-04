@@ -220,6 +220,8 @@ Useful options:
 - `--metric regret`: plot regret against the best fixed neighbor subset in hindsight.
 - `--metric normalized_regret`: plot regret divided by oracle reward.
 - `--metric reward_algorithm|reward_oracle`: plot cumulative reward curves.
+- `--metric neighbor_disagreement`: plot mean/median/max neighbor disagreement over rounds.
+- `--metric consensus_drift`: plot mean/median/max drift from the global average model.
 - `--stat mean|worst`: choose mean worker or worst worker; for regret, worst means highest regret.
 - `--legend outside|best|none`: choose legend placement; default keeps it below the plot.
 - `--max-label-length 48`: cap auto-generated labels.

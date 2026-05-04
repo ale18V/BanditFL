@@ -264,3 +264,82 @@ def compute_closest_vectors_and_mean(vectors, nb_workers, nb_byz):
     _, indices = torch.topk(distances, k=nb_workers-nb_byz, largest=False)
     # Use advanced indexing to select the closest vectors and compute their mean
     return vectors[indices].mean(dim=0)
+
+
+def _stack_vectors(vectors: torch.Tensor | list[torch.Tensor]) -> torch.Tensor:
+    if isinstance(vectors, torch.Tensor):
+        if vectors.dim() == 1:
+            return vectors.unsqueeze(0)
+        if vectors.dim() == 2:
+            return vectors
+        raise ValueError("vectors must be 1D or 2D tensor")
+    return torch.stack(list(vectors))
+
+
+def consensus_drift(vectors: torch.Tensor | list[torch.Tensor]) -> torch.Tensor:
+    """Return per-node squared distance to the global mean model."""
+    stacked = _stack_vectors(vectors)
+    mean_params = stacked.mean(dim=0)
+    deltas = stacked - mean_params
+    return (deltas * deltas).sum(dim=1)
+
+
+def neighbor_disagreement(
+    vectors: torch.Tensor | list[torch.Tensor],
+    *,
+    neighbor_indices: torch.Tensor | list[list[int]] | None = None,
+    adjacency: torch.Tensor | list[list[float]] | None = None,
+) -> torch.Tensor:
+    """Return per-node mean squared distance to neighbors.
+
+    Pass either neighbor_indices (shape: N x K with -1 padding) or adjacency
+    (shape: N x N, non-zero indicates neighbor). Self edges are ignored.
+    """
+    if (neighbor_indices is None) == (adjacency is None):
+        raise ValueError("pass exactly one of neighbor_indices or adjacency")
+
+    stacked = _stack_vectors(vectors)
+    device = stacked.device
+
+    if adjacency is not None:
+        adj = adjacency
+        if not isinstance(adj, torch.Tensor):
+            adj = torch.as_tensor(adj, device=device)
+        else:
+            adj = adj.to(device)
+        if adj.ndim != 2 or adj.shape[0] != adj.shape[1]:
+            raise ValueError("adjacency must be a square matrix")
+        if adj.shape[0] != stacked.shape[0]:
+            raise ValueError("adjacency size must match number of vectors")
+        if torch.any(torch.diagonal(adj) != 0):
+            adj = adj.clone()
+            adj.fill_diagonal_(0)
+        mask = adj != 0
+        if mask.sum() == 0:
+            return torch.zeros(stacked.shape[0], device=device)
+        dist_sq = torch.cdist(stacked, stacked).pow(2)
+        masked = dist_sq * mask
+        counts = mask.sum(dim=1).clamp(min=1).to(dist_sq.dtype)
+        return masked.sum(dim=1) / counts
+
+    neighbors = neighbor_indices
+    if not isinstance(neighbors, torch.Tensor):
+        neighbors = torch.as_tensor(neighbors, device=device)
+    else:
+        neighbors = neighbors.to(device)
+    if neighbors.ndim == 1:
+        neighbors = neighbors.unsqueeze(0)
+    if neighbors.numel() == 0:
+        return torch.zeros(stacked.shape[0], device=device)
+
+    valid_mask = neighbors >= 0
+    if valid_mask.sum() == 0:
+        return torch.zeros(stacked.shape[0], device=device)
+
+    safe_neighbors = neighbors.clamp(min=0).long()
+    neighbor_weights = stacked[safe_neighbors]
+    diffs = neighbor_weights - stacked.unsqueeze(1)
+    dist_sq = (diffs * diffs).sum(dim=2)
+    dist_sq = dist_sq * valid_mask
+    counts = valid_mask.sum(dim=1).clamp(min=1).to(dist_sq.dtype)
+    return dist_sq.sum(dim=1) / counts

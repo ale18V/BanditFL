@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 
+from banditdl.utils.math_utils import consensus_drift, neighbor_disagreement
 from banditdl.utils.results import make_result_file, store_result
 from banditdl.core.sampling import make_neighbor_sampler, make_reward_strategy
 from banditdl.core.topology.fxgraph import generate_connected_graph
@@ -220,6 +221,8 @@ def run_dynamic(params: dict, result_dir: pathlib.Path, seed: int, device: str) 
     oracle_reward_history = []
     selected_neighbor_history = []
     oracle_neighbor_history = []
+    neighbor_disagreement_history = []
+    consensus_drift_history = []
 
     for current_step in range(args.nb_steps + 1):
         mean_accuracy = None
@@ -274,6 +277,17 @@ def run_dynamic(params: dict, result_dir: pathlib.Path, seed: int, device: str) 
             w.observe_neighbors(selected_neighbor_ids, neighbor_weights)
             w.aggregate(neighbor_weights)
 
+        with torch.no_grad():
+            updated_weights = [w.pull(None) for w in workers]
+            neighbor_matrix = selected_round.copy()
+            neighbor_matrix[neighbor_matrix >= args.nb_honests] = -1
+            disagreement = neighbor_disagreement(
+                updated_weights, neighbor_indices=neighbor_matrix
+            )
+            consensus = consensus_drift(updated_weights)
+        neighbor_disagreement_history.append(disagreement.cpu().numpy())
+        consensus_drift_history.append(consensus.cpu().numpy())
+
         oracle_neighbors = []
         oracle_rewards = []
         for w in workers:
@@ -318,6 +332,14 @@ def run_dynamic(params: dict, result_dir: pathlib.Path, seed: int, device: str) 
         os.path.join(result_dir, "oracle_neighbors.npy"),
         np.array(oracle_neighbor_history, dtype=int),
     )
+    np.save(
+        os.path.join(result_dir, "neighbor_disagreement.npy"),
+        np.array(neighbor_disagreement_history),
+    )
+    np.save(
+        os.path.join(result_dir, "consensus_drift.npy"),
+        np.array(consensus_drift_history),
+    )
     _log_done("dynamic")
 
 
@@ -346,6 +368,13 @@ def run_fixed(params: dict, result_dir: pathlib.Path, seed: int, device: str) ->
         device=args.device if args.device != "auto" else "cpu",
     )
     dissensus = args.attack == "dissensus"
+    adjacency_honest = torch.as_tensor(
+        np.asarray(
+            comm_graph.adjacency_matrix[: args.nb_honests, : args.nb_honests]
+        ),
+        dtype=torch.float32,
+        device=args.device,
+    )
 
     result_dir.mkdir(parents=True, exist_ok=True)
     workers = []
@@ -413,6 +442,8 @@ def run_fixed(params: dict, result_dir: pathlib.Path, seed: int, device: str) ->
     make_result_file(fd_eval_worst, ["Step number", "Cross-accuracy"])
 
     accuracies = []
+    neighbor_disagreement_history = []
+    consensus_drift_history = []
     for current_step in range(args.nb_steps + 1):
         mean_accuracy = None
         if args.evaluation_delta > 0 and current_step % args.evaluation_delta == 0:
@@ -459,10 +490,27 @@ def run_fixed(params: dict, result_dir: pathlib.Path, seed: int, device: str) ->
                 )
             w.aggregate(honest_neighbor_weights + byz_weights)
 
+        with torch.no_grad():
+            updated_weights = [w.pull(None) for w in workers]
+            disagreement = neighbor_disagreement(
+                updated_weights, adjacency=adjacency_honest
+            )
+            consensus = consensus_drift(updated_weights)
+        neighbor_disagreement_history.append(disagreement.cpu().numpy())
+        consensus_drift_history.append(consensus.cpu().numpy())
+
     if accuracies:
         worst_idx = min(range(len(workers)), key=lambda i: accuracies[-1][i])
         for i, accs in enumerate(accuracies):
             store_result(fd_eval_worst, i * args.evaluation_delta, accs[worst_idx])
 
     np.save(os.path.join(result_dir, "accuracies.npy"), np.array(accuracies))
+    np.save(
+        os.path.join(result_dir, "neighbor_disagreement.npy"),
+        np.array(neighbor_disagreement_history),
+    )
+    np.save(
+        os.path.join(result_dir, "consensus_drift.npy"),
+        np.array(consensus_drift_history),
+    )
     _log_done("fixed")
