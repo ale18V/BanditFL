@@ -26,6 +26,8 @@ Example overrides:
 uv run -m banditdl profile=mnist_dynamic profile.nodes=100 profile.sampling=0.05 train.neighbor_sampler=uniform seed=0
 ```
 
+Runs print lightweight progress to stdout: start metadata, result directory, periodic decentralized-learning rounds, evaluation accuracy when available, and completion.
+
 ## Run Sweeps (Hydra Multirun)
 
 Hydra does orchestration. The custom in-repo scheduler is no longer the main path.

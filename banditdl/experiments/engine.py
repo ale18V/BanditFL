@@ -29,6 +29,40 @@ def _setup_seed(seed: int) -> None:
     torch.backends.cudnn.benchmark = not reproducible
 
 
+def _progress_interval(nb_steps: int) -> int:
+    return max(1, nb_steps // 20)
+
+
+def _should_log_step(current_step: int, nb_steps: int) -> bool:
+    return (
+        current_step == 0
+        or current_step == nb_steps
+        or current_step % _progress_interval(nb_steps) == 0
+    )
+
+
+def _log_start(mode: str, args, result_dir: pathlib.Path) -> None:
+    print(
+        f"[banditdl] starting {mode} run: "
+        f"dataset={args.dataset}, model={args.model}, nodes={args.nb_workers}, "
+        f"honest={args.nb_honests}, byzantine={args.nb_real_byz}, "
+        f"steps={args.nb_steps}, seed={args.seed}, device={args.device}",
+        flush=True,
+    )
+    print(f"[banditdl] results: {result_dir}", flush=True)
+
+
+def _log_progress(mode: str, current_step: int, args, accuracy=None) -> None:
+    message = f"[banditdl] {mode} round {current_step}/{args.nb_steps}"
+    if accuracy is not None:
+        message += f" | mean_accuracy={accuracy:.4f}"
+    print(message, flush=True)
+
+
+def _log_done(mode: str) -> None:
+    print(f"[banditdl] finished {mode} run", flush=True)
+
+
 def _make_args(
     params: dict, result_dir: pathlib.Path, seed: int, device: str
 ) -> SimpleNamespace:
@@ -137,6 +171,7 @@ def _dynamic_candidate_weights(w, honest_weights, byz_workers, current_step):
 def run_dynamic(params: dict, result_dir: pathlib.Path, seed: int, device: str) -> None:
     args = _make_args(params, result_dir, seed, device)
     _setup_seed(args.seed)
+    _log_start("dynamic", args, result_dir)
 
     train_loader_dict, test_loader = dataset.make_train_test_datasets(
         args.dataset,
@@ -187,10 +222,15 @@ def run_dynamic(params: dict, result_dir: pathlib.Path, seed: int, device: str) 
     oracle_neighbor_history = []
 
     for current_step in range(args.nb_steps + 1):
+        mean_accuracy = None
         if args.evaluation_delta > 0 and current_step % args.evaluation_delta == 0:
             accs = [w.compute_accuracy() for w in workers]
+            mean_accuracy = sum(accs) / len(accs)
             accuracies.append(accs)
-            store_result(fd_eval, current_step, sum(accs) / len(accs))
+            store_result(fd_eval, current_step, mean_accuracy)
+
+        if _should_log_step(current_step, args.nb_steps):
+            _log_progress("dynamic", current_step, args, mean_accuracy)
 
         for w in workers:
             w.train()
@@ -278,11 +318,13 @@ def run_dynamic(params: dict, result_dir: pathlib.Path, seed: int, device: str) 
         os.path.join(result_dir, "oracle_neighbors.npy"),
         np.array(oracle_neighbor_history, dtype=int),
     )
+    _log_done("dynamic")
 
 
 def run_fixed(params: dict, result_dir: pathlib.Path, seed: int, device: str) -> None:
     args = _make_args(params, result_dir, seed, device)
     _setup_seed(args.seed)
+    _log_start("fixed", args, result_dir)
 
     train_loader_dict, test_loader = dataset.make_train_test_datasets(
         args.dataset,
@@ -372,10 +414,15 @@ def run_fixed(params: dict, result_dir: pathlib.Path, seed: int, device: str) ->
 
     accuracies = []
     for current_step in range(args.nb_steps + 1):
+        mean_accuracy = None
         if args.evaluation_delta > 0 and current_step % args.evaluation_delta == 0:
             accs = [w.compute_accuracy() for w in workers]
+            mean_accuracy = sum(accs) / len(accs)
             accuracies.append(accs)
-            store_result(fd_eval, current_step, sum(accs) / len(accs))
+            store_result(fd_eval, current_step, mean_accuracy)
+
+        if _should_log_step(current_step, args.nb_steps):
+            _log_progress("fixed", current_step, args, mean_accuracy)
 
         for w in workers:
             w.train()
@@ -418,3 +465,4 @@ def run_fixed(params: dict, result_dir: pathlib.Path, seed: int, device: str) ->
             store_result(fd_eval_worst, i * args.evaluation_delta, accs[worst_idx])
 
     np.save(os.path.join(result_dir, "accuracies.npy"), np.array(accuracies))
+    _log_done("fixed")
