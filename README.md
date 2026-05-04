@@ -159,7 +159,10 @@ Useful options:
 - `--metric accuracies`: plot from `accuracies.npy` (default).
 - `--metric eval`: plot average accuracy from `eval`.
 - `--metric eval_worst`: plot worst-worker accuracy from `eval_worst`.
-- `--stat mean|worst`: choose mean or worst when plotting `accuracies.npy`.
+- `--metric regret`: plot regret against the best fixed neighbor subset in hindsight.
+- `--metric normalized_regret`: plot regret divided by oracle reward.
+- `--metric reward_algorithm|reward_oracle`: plot cumulative reward curves.
+- `--stat mean|worst`: choose mean worker or worst worker; for regret, worst means highest regret.
 - `--legend outside|best|none`: choose legend placement; default keeps it below the plot.
 - `--max-label-length 48`: cap auto-generated labels.
 
@@ -307,5 +310,13 @@ Current bandit feedback:
 - dynamic workers update selected arms after receiving neighbor weights,
 - reward is selected through a strategy object; the default is `parameter_distance`,
 - `parameter_distance` uses `1 / (1 + parameter_distance)` against the local model before aggregation.
+
+Dynamic runs also save hindsight diagnostics for every sampler, including uniform:
+- `reward_algorithm.npy`: cumulative reward achieved by sampled neighbors.
+- `reward_oracle.npy`: cumulative reward of the best fixed neighbor subset in hindsight.
+- `regret.npy`: `reward_oracle - reward_algorithm`.
+- `normalized_regret.npy`: regret divided by oracle reward.
+- `selected_neighbors.npy`: sampled neighbors per round and worker.
+- `oracle_neighbors.npy`: best fixed hindsight neighbors per round and worker.
 
 This is intentionally small: sampler choice and bandit parameters are Hydra-controlled, while reward design remains isolated behind the reward strategy API in `banditdl/core/sampling.py`.

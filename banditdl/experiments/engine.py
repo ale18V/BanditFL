@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import os
 import pathlib
 import random
@@ -112,6 +113,27 @@ def _init_workers_dynamic(args, train_loader_dict, test_loader):
     return workers
 
 
+def _best_fixed_subset(scores, worker_id: int, k: int):
+    scores = np.asarray(scores, dtype=float)
+    candidates = [i for i in range(len(scores)) if i != worker_id]
+    selected = sorted(candidates, key=lambda i: scores[i], reverse=True)[:k]
+    return np.array(selected, dtype=int), float(scores[selected].sum())
+
+
+def _dynamic_candidate_weights(w, honest_weights, byz_workers, current_step):
+    candidate_weights = {
+        worker_id: weight
+        for worker_id, weight in enumerate(honest_weights)
+        if worker_id != w.worker_id
+    }
+    context = {"honest_weights": honest_weights, "step": current_step}
+    for byz_worker in byz_workers:
+        weight = copy.deepcopy(byz_worker).pull(context)
+        if weight is not None:
+            candidate_weights[byz_worker.worker_id] = weight
+    return candidate_weights
+
+
 def run_dynamic(params: dict, result_dir: pathlib.Path, seed: int, device: str) -> None:
     args = _make_args(params, result_dir, seed, device)
     _setup_seed(args.seed)
@@ -149,6 +171,7 @@ def run_dynamic(params: dict, result_dir: pathlib.Path, seed: int, device: str) 
         )
         for i in range(args.nb_honests, args.nb_workers)
     ]
+    byz_workers_by_id = {byz.worker_id: byz for byz in byz_workers}
 
     fd_eval = (result_dir / "eval").open("w")
     fd_eval_worst = (result_dir / "eval_worst").open("w")
@@ -156,6 +179,13 @@ def run_dynamic(params: dict, result_dir: pathlib.Path, seed: int, device: str) 
     make_result_file(fd_eval_worst, ["Step number", "Cross-accuracy"])
 
     accuracies = []
+    cumulative_arm_rewards = np.zeros((args.nb_honests, args.nb_workers))
+    cumulative_algorithm_rewards = np.zeros(args.nb_honests)
+    algorithm_reward_history = []
+    oracle_reward_history = []
+    selected_neighbor_history = []
+    oracle_neighbor_history = []
+
     for current_step in range(args.nb_steps + 1):
         if args.evaluation_delta > 0 and current_step % args.evaluation_delta == 0:
             accs = [w.compute_accuracy() for w in workers]
@@ -166,34 +196,88 @@ def run_dynamic(params: dict, result_dir: pathlib.Path, seed: int, device: str) 
             w.train()
         honest_weights = [w.pull(None) for w in workers]
 
+        selected_round = np.full(
+            (args.nb_honests, workers[0].nb_neighbors), -1, dtype=int
+        )
         for w in workers:
             neighbor_indices = w._sample_neighbors()
-            selected_neighbor_ids = []
-            neighbor_weights = []
-            byz_neighbor_ids = []
-            for neighbor_id in neighbor_indices:
-                if neighbor_id < args.nb_honests:
-                    selected_neighbor_ids.append(neighbor_id)
-                    neighbor_weights.append(honest_weights[neighbor_id])
-                else:
-                    byz_neighbor_ids.append(neighbor_id)
-                    if byz_workers:
-                        selected_neighbor_ids.append(neighbor_id)
-                        neighbor_weights.append(
-                            byz_workers[0].pull(
-                                {"honest_weights": honest_weights, "step": current_step}
-                            )
-                        )
+            candidate_weights = _dynamic_candidate_weights(
+                w, honest_weights, byz_workers, current_step
+            )
+            selected_neighbor_ids = [
+                i for i in neighbor_indices if i in candidate_weights
+            ]
+            for neighbor_id in selected_neighbor_ids:
+                if neighbor_id >= args.nb_honests:
+                    weight = byz_workers_by_id[neighbor_id].pull(
+                        {"honest_weights": honest_weights, "step": current_step}
+                    )
+                    if weight is not None:
+                        candidate_weights[neighbor_id] = weight
+            candidate_ids = list(candidate_weights)
+            candidate_values = [candidate_weights[i] for i in candidate_ids]
+            candidate_rewards = w.reward_strategy.score(w.pull(None), candidate_values)
+            rewards_by_id = dict(zip(candidate_ids, candidate_rewards, strict=True))
+            cumulative_arm_rewards[w.worker_id, candidate_ids] += candidate_rewards
+
+            neighbor_weights = [candidate_weights[i] for i in selected_neighbor_ids]
+            byz_neighbor_ids = [
+                i for i in selected_neighbor_ids if i >= args.nb_honests
+            ]
+            selected_round[w.worker_id, : len(selected_neighbor_ids)] = (
+                selected_neighbor_ids
+            )
+            cumulative_algorithm_rewards[w.worker_id] += sum(
+                rewards_by_id[i] for i in selected_neighbor_ids
+            )
             w.num_selected_byz.append(len(byz_neighbor_ids))
             w.observe_neighbors(selected_neighbor_ids, neighbor_weights)
             w.aggregate(neighbor_weights)
+
+        oracle_neighbors = []
+        oracle_rewards = []
+        for w in workers:
+            oracle_ids, oracle_reward = _best_fixed_subset(
+                cumulative_arm_rewards[w.worker_id],
+                worker_id=w.worker_id,
+                k=w.nb_neighbors,
+            )
+            oracle_neighbors.append(oracle_ids)
+            oracle_rewards.append(oracle_reward)
+
+        algorithm_reward_history.append(cumulative_algorithm_rewards.copy())
+        oracle_reward_history.append(np.array(oracle_rewards))
+        selected_neighbor_history.append(selected_round)
+        oracle_neighbor_history.append(np.stack(oracle_neighbors))
 
     if accuracies:
         worst_idx = min(range(len(workers)), key=lambda i: accuracies[-1][i])
         for i, accs in enumerate(accuracies):
             store_result(fd_eval_worst, i * args.evaluation_delta, accs[worst_idx])
 
+    algorithm_rewards = np.array(algorithm_reward_history)
+    oracle_rewards = np.array(oracle_reward_history)
+    regret = oracle_rewards - algorithm_rewards
+    normalized_regret = np.divide(
+        regret,
+        np.maximum(oracle_rewards, 1e-12),
+        out=np.zeros_like(regret),
+        where=oracle_rewards > 0,
+    )
+
     np.save(os.path.join(result_dir, "accuracies.npy"), np.array(accuracies))
+    np.save(os.path.join(result_dir, "reward_algorithm.npy"), algorithm_rewards)
+    np.save(os.path.join(result_dir, "reward_oracle.npy"), oracle_rewards)
+    np.save(os.path.join(result_dir, "regret.npy"), regret)
+    np.save(os.path.join(result_dir, "normalized_regret.npy"), normalized_regret)
+    np.save(
+        os.path.join(result_dir, "selected_neighbors.npy"),
+        np.array(selected_neighbor_history, dtype=int),
+    )
+    np.save(
+        os.path.join(result_dir, "oracle_neighbors.npy"),
+        np.array(oracle_neighbor_history, dtype=int),
+    )
 
 
 def run_fixed(params: dict, result_dir: pathlib.Path, seed: int, device: str) -> None:

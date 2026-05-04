@@ -15,6 +15,15 @@ from textwrap import shorten
 import matplotlib.pyplot as plt
 import numpy as np
 
+ARRAY_METRICS = {
+    "accuracies",
+    "reward_algorithm",
+    "reward_oracle",
+    "regret",
+    "normalized_regret",
+}
+REGRET_METRICS = {"regret", "normalized_regret"}
+
 
 def _read_eval(path: Path) -> tuple[np.ndarray, np.ndarray]:
     steps: list[float] = []
@@ -33,19 +42,20 @@ def _read_eval(path: Path) -> tuple[np.ndarray, np.ndarray]:
 def _load_series(
     run_dir: Path, metric: str, stat: str
 ) -> tuple[np.ndarray, np.ndarray]:
-    if metric == "accuracies":
-        path = run_dir / "accuracies.npy"
+    if metric in ARRAY_METRICS:
+        path = run_dir / f"{metric}.npy"
         if not path.exists():
             raise FileNotFoundError(path)
-        accuracies = np.load(path)
-        if accuracies.size == 0:
+        values_by_worker = np.load(path)
+        if values_by_worker.size == 0:
             raise ValueError(f"{path} is empty")
         if stat == "mean":
-            values = accuracies.mean(axis=1)
+            values = values_by_worker.mean(axis=1)
         elif stat == "worst":
-            values = accuracies.min(axis=1)
+            reducer = np.max if metric in REGRET_METRICS else np.min
+            values = reducer(values_by_worker, axis=1)
         else:
-            raise ValueError(f"unsupported stat for accuracies: {stat}")
+            raise ValueError(f"unsupported stat for {metric}: {stat}")
         return np.arange(len(values)), values
 
     metric_path = run_dir / metric
@@ -59,6 +69,14 @@ def _load_series(
 
 def _plot_series(ax, steps: np.ndarray, values: np.ndarray, label: str) -> None:
     ax.plot(steps, values, marker="o", linewidth=1.8, label=label)
+
+
+def _ylabel(metric: str) -> str:
+    if metric in {"accuracies", "eval", "eval_worst"}:
+        return "Accuracy"
+    if metric in REGRET_METRICS:
+        return "Regret"
+    return "Reward"
 
 
 def _default_label(run_dir: Path, max_length: int) -> str:
@@ -126,8 +144,9 @@ def plot_runs(
             _plot_series(ax, steps, values, label)
 
     ax.set_xlabel(xlabel)
-    ax.set_ylabel("Accuracy")
-    ax.set_ylim(0, 1)
+    ax.set_ylabel(_ylabel(metric))
+    if metric in {"accuracies", "eval", "eval_worst"}:
+        ax.set_ylim(0, 1)
     ax.grid(True, alpha=0.25)
     ax.set_title(title or ("Aggregate" if aggregate else "Result comparison"))
     if legend == "outside":
@@ -163,13 +182,23 @@ def main() -> None:
         "-o", "--output", type=Path, default=Path("plot.png"), help="Output image path"
     )
     parser.add_argument(
-        "--metric", choices=["accuracies", "eval", "eval_worst"], default="accuracies"
+        "--metric",
+        choices=[
+            "accuracies",
+            "eval",
+            "eval_worst",
+            "reward_algorithm",
+            "reward_oracle",
+            "regret",
+            "normalized_regret",
+        ],
+        default="accuracies",
     )
     parser.add_argument(
         "--stat",
         choices=["mean", "worst"],
         default="mean",
-        help="Statistic used with accuracies.npy",
+        help="Worker statistic. For regret metrics, worst means highest regret.",
     )
     parser.add_argument(
         "--aggregate",

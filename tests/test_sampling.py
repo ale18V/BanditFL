@@ -7,6 +7,7 @@ from banditdl.core.sampling import (
     make_neighbor_sampler,
     make_reward_strategy,
 )
+from banditdl.experiments.engine import _best_fixed_subset
 
 
 def test_bandit_sampler_prefers_high_reward_arm():
@@ -34,3 +35,10 @@ def test_reward_strategy_factory():
     assert isinstance(
         make_reward_strategy("parameter_distance"), ParameterDistanceReward
     )
+
+
+def test_best_fixed_subset_excludes_self():
+    selected, reward = _best_fixed_subset(torch.tensor([0.9, 0.5, 0.8, 0.1]), 0, 2)
+
+    assert selected.tolist() == [2, 1]
+    assert reward == pytest.approx(1.3)
