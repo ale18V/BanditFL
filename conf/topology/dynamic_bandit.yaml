@@ -1,3 +1,4 @@
+name: "dynamic_bandit"
 mode: dynamic
 nodes: 20
 sampling: 0.2

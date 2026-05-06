@@ -1,3 +1,4 @@
+name: "fixed_cs"
 mode: fixed
 nodes: 30
 degree: 15
