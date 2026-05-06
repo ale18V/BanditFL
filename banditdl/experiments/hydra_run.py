@@ -23,8 +23,8 @@ def _run_name(cfg: DictConfig, byzantine_budget: int, nb_neighbors: int) -> str:
         else f"-degree_{nb_neighbors}"
     )
     base = (
-        f"{cfg.dataset_nn.dataset}-n_{cfg.nodes}"
-        f"-model_{cfg.dataset_nn.model}"
+        f"{cfg.dataset.dataset}-n_{cfg.nodes}"
+        f"-model_{cfg.dataset.model}"
         f"-attack_{cfg.adversary.attack}"
         f"-agg_{cfg.aggregator.aggregator}"
         f"{topology_token}"
@@ -57,8 +57,8 @@ def main(cfg: DictConfig) -> None:
         nb_neighbors = int(cfg.topology.degree)
 
     # Build params from config groups
-    params["dataset"] = cfg.dataset_nn.dataset
-    params["model"] = cfg.dataset_nn.model
+    params["dataset"] = cfg.dataset.dataset
+    params["model"] = cfg.dataset.model
     params["nb-workers"] = nodes
     params["dirichlet-alpha"] = float(cfg.heterogeneity.alpha)
     params["nb-decl-byz"] = int(cfg.adversary.byzcount)
