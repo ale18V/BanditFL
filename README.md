@@ -134,13 +134,11 @@ Local configs are in `conf/local/`. They describe dataset/model/optimizer-style 
 
 Topology configs are in `conf/topology/`.
 
-- `mode`: topology mode. `dynamic` resamples neighbors every round. `fixed` builds one graph.
 - `nodes`: total simulated participants, including Byzantine participants.
-- `sampling`: dynamic-mode sampling ratio. The dynamic worker samples about `round((nodes - 1) * sampling)` neighbors.
-- `degree`: fixed-mode graph degree target.
-- `method`: fixed-graph summation method. Current values: `cs+`, `cs_he`, `gts`.
-- `neighbor_sampler`: neighbor selection strategy. Values: `uniform`, `bandit`, `epsilon_greedy`.
-- `bandit_epsilon`: epsilon-greedy exploration rate. Used by `bandit`/`epsilon_greedy`.
+- `neighbor_sampler`: neighbor selection/aggregation strategy. Dynamic samplers: `uniform`, `bandit`, `epsilon_greedy`. Fixed-graph methods: `cs+`, `cs_he`, `gts`.
+- `sampling`: dynamic sampler ratio. Used when `neighbor_sampler` is `uniform`/`bandit`/`epsilon_greedy`. The dynamic worker samples about `round((nodes - 1) * sampling)` neighbors.
+- `degree`: fixed-graph degree target. Used when `neighbor_sampler` is `cs+`/`cs_he`/`gts`.
+- `bandit_epsilon`: epsilon-greedy exploration rate. Used by `bandit`/`epsilon_greedy` samplers.
 - `bandit_initial_value`: initial reward estimate for unseen arms.
 - `bandit_reward`: reward strategy. Current value: `parameter_distance`.
 
@@ -169,7 +167,7 @@ These live under `local.params_common`.
 - `numb-labels`: number of dataset labels.
 - `pre-aggregator`: optional first-stage robust aggregation rule, commonly `nnm`.
 - `aggregator`: robust aggregator, commonly `trmean`.
-- `rag`: dynamic-mode robust aggregation flag. Dynamic Hydra runs force this to `true`.
+- `rag`: robust aggregation flag for dynamic samplers (`uniform`, `bandit`, `epsilon_greedy`). Dynamic runs force this to `true`.
 - `mimic-learning-phase`: optional learning phase length for mimic attacks.
 - `bucket-size`: robust aggregation bucket size. Defaults to `1`.
 - `gradient-clip`: optional gradient clipping threshold.
@@ -205,7 +203,6 @@ Example:
 
 ```yaml
 # conf/topology/my_bandit.yaml
-mode: dynamic
 nodes: 100
 sampling: 0.05
 neighbor_sampler: bandit
@@ -343,7 +340,7 @@ experiments.engine::run_dynamic]
   - Converts composed config into one concrete training call.
 
 - `banditdl.experiments.engine`
-  - Per-run execution logic for dynamic/fixed settings.
+  - Per-run execution logic for dynamic/fixed paths (driven by `neighbor_sampler`).
   - Drives training/evaluation loops and persistence.
 
 - `banditdl.core.worker.*`
@@ -356,7 +353,7 @@ experiments.engine::run_dynamic]
   - Dataset loading/partitioning and model construction.
 
 - `banditdl.core.sampling`
-  - Neighbor sampling strategy used in dynamic worker mode.
+  - Neighbor sampling strategy used by dynamic samplers (`uniform`, `bandit`, `epsilon_greedy`).
 
 
 ### Terminology: Worker = Node
@@ -385,7 +382,7 @@ flowchart LR
         W0 --- W2
     end
 
-    W0 --> S["core.sampling: choose neighbors (dynamic mode)"]
+    W0 --> S["core.sampling: choose neighbors (dynamic samplers)"]
     W1 --> S
     W2 --> S
     W3 --> S
@@ -400,7 +397,7 @@ flowchart LR
 Interpretation:
 - Each worker is a simulated node with its own local data and model copy.
 - Communication is peer-to-peer, not centralized; each node exchanges updates with selected neighbors.
-- In dynamic mode, neighbor sets are re-sampled each round (`core.sampling`).
+- When `neighbor_sampler` is `uniform`/`bandit`/`epsilon_greedy`, neighbor sets are re-sampled each round (`core.sampling`).
 - Received updates pass through Byzantine attack/aggregation logic before updating local state.
 
 ## Sampling / Bandit Hook Points
@@ -409,7 +406,7 @@ Interpretation:
 - `banditdl/experiments/engine.py`
 - `banditdl/core/worker/`
 
-Use the multi-armed bandit sampler in dynamic mode:
+Use the multi-armed bandit sampler (`neighbor_sampler: bandit`):
 
 ```bash
 uv run -m banditdl \

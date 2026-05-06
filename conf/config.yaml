@@ -1,10 +1,15 @@
 defaults:
-  - local: mnist
+  - dataset_nn: mnist
   - topology: dynamic_uniform
   - adversary: none
+  - aggregator: mean
+  - heterogeneity: alpha0.5
+  - optimization: opt_mnist
+  - evaluation: evaluation
   - _self_
   - override
 
+nodes: 30
 seed: 123
 device: "cpu"
 

@@ -1,6 +1,3 @@
 name: "fixed_cs"
-mode: fixed
-nodes: 30
 degree: 15
-method: cs+
-neighbor_sampler: uniform
+neighbor_sampler: cs+

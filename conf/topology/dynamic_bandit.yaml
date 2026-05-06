@@ -1,6 +1,4 @@
 name: "dynamic_bandit"
-mode: dynamic
-nodes: 20
 sampling: 0.2
 neighbor_sampler: bandit
 bandit_epsilon: 0.1

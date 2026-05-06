@@ -106,6 +106,22 @@ def _sample_param(trial, param_name, spec):
     raise ValueError(f"Unsupported parameter type '{param_type}' for '{param_name}'")
 
 
+def _conditions_met(cfg, conditions):
+    if conditions is None:
+        return True
+    if not isinstance(conditions, dict) or not conditions:
+        raise ValueError("optuna.search_space 'when' must be a non-empty mapping")
+    for path, expected in conditions.items():
+        actual = OmegaConf.select(cfg, path)
+        if isinstance(expected, list):
+            if actual not in expected:
+                return False
+        else:
+            if actual != expected:
+                return False
+    return True
+
+
 def _build_engine_params(cfg):
     """
     Convert Hydra config into engine argument dictionary.
@@ -116,46 +132,61 @@ def _build_engine_params(cfg):
     return: tuple
       (engine_params, run_mode)
     """
-    params_common = OmegaConf.to_container(cfg.local.params_common, resolve=True)
-    if not isinstance(params_common, dict):
-        raise ValueError("local.params_common must resolve to a dictionary")
-
-    params = dict(params_common)
-    nodes = int(cfg.topology.nodes)
-    if cfg.topology.mode == "dynamic":
+    params = {}
+    nodes = int(cfg.nodes)
+    sampler = str(cfg.topology.neighbor_sampler)
+    is_dynamic = sampler in {"uniform", "bandit", "epsilon_greedy"}
+    if is_dynamic:
         sampling = float(cfg.topology.sampling)
         nb_neighbors = max(1, min(nodes - 1, int(round((nodes - 1) * sampling))))
     else:
         nb_neighbors = int(cfg.topology.degree)
 
-    params["dataset"] = cfg.local.dataset
-    params["model"] = cfg.local.model
+    # Build params from config groups
+    params["dataset"] = cfg.dataset_nn.dataset
+    params["model"] = cfg.dataset_nn.model
     params["nb-workers"] = nodes
-    params["dirichlet-alpha"] = float(cfg.local.alpha)
+    params["dirichlet-alpha"] = float(cfg.heterogeneity.alpha)
     params["nb-decl-byz"] = int(cfg.adversary.byzcount)
     params["nb-real-byz"] = int(cfg.adversary.byzcount)
     params["nb-neighbors"] = nb_neighbors
     if cfg.adversary.attack is not None:
         params["attack"] = cfg.adversary.attack
-    params["nb-local-steps"] = int(cfg.local.nb_local_steps)
-    params["neighbor-sampler"] = cfg.topology.neighbor_sampler
-    params["bandit-epsilon"] = float(cfg.topology.get("bandit_epsilon", 0.1))
-    params["bandit-initial-value"] = float(cfg.topology.get("bandit_initial_value", 0.0))
+    params["nb-local-steps"] = int(cfg.optimization.nb_local_steps)
+    params["neighbor-sampler"] = sampler
+    params["bandit-epsilon"] = float(cfg.topology.get("bandit_epsilon"))
+    params["bandit-initial-value"] = float(cfg.topology.get("bandit_initial_value"))
     params["bandit-reward"] = cfg.topology.get("bandit_reward", "parameter_distance")
-
+    
+    # Add optimization parameters
+    params["batch-size"] = int(cfg.optimization.get("batch_size"))
+    params["loss"] = cfg.optimization.get("loss")
+    params["weight-decay"] = float(cfg.optimization.get("weight_decay"))
+    params["momentum-worker"] = float(cfg.optimization.get("momentum_worker"))
+    params["nb-steps"] = int(cfg.optimization.get("nb_steps"))
+    
+    # Add aggregator parameters
+    params["aggregator"] = cfg.aggregator.get("aggregator")
+    params["pre-aggregator"] = cfg.aggregator.get("pre_aggregator")
+    params["rag"] = bool(cfg.aggregator.get("rag"))
+    
+    # Add heterogeneity parameters
+    params["numb-labels"] = int(cfg.heterogeneity.get("numb_labels"))    
+    # Add evaluation parameters
+    params["evaluation-delta"] = int(cfg.evaluation.get("evaluation_delta"))
     byz_budget_raw = cfg.adversary.get("byzantine_budget")
     byz_budget = int(cfg.adversary.byzcount if byz_budget_raw is None else byz_budget_raw)
     params["b-hat"] = byz_budget
 
-    if cfg.topology.mode == "dynamic":
+    if is_dynamic:
         params["rag"] = True
         params["sampling-ratio"] = float(cfg.topology.sampling)
 
     method = cfg.topology.get("method")
-    if method is not None:
-        params["method"] = method
+    if not is_dynamic:
+        params["method"] = method or sampler
 
-    return params, str(cfg.topology.mode)
+    return params, "dynamic" if is_dynamic else "fixed"
 
 
 def _pick_device(cfg):
@@ -222,6 +253,10 @@ def _objective(trial, base_cfg, output_root, search_space):
     """
     trial_cfg = OmegaConf.create(OmegaConf.to_container(base_cfg, resolve=False))
     for param_path, spec in search_space.items():
+        if isinstance(spec, dict) and "when" in spec:
+            if not _conditions_met(trial_cfg, spec.get("when")):
+                continue
+            spec = {k: v for k, v in spec.items() if k != "when"}
         sampled_value = _sample_param(trial, param_path, spec)
         OmegaConf.update(trial_cfg, param_path, sampled_value, merge=False)
 
