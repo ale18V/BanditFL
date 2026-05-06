@@ -1,5 +1,5 @@
 defaults:
-  - dataset_nn: mnist
+  - dataset: mnist
   - topology: dynamic_uniform
   - adversary: none
   - aggregator: mean

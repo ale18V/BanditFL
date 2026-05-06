@@ -40,8 +40,9 @@ def _build_engine_params(cfg):
     else:
         nb_neighbors = int(cfg.topology.degree)
 
-    params["dataset"] = cfg.dataset_nn.dataset
-    params["model"] = cfg.dataset_nn.model
+    # Build params from config groups
+    params["dataset"] = cfg.dataset.dataset
+    params["model"] = cfg.dataset.model
     params["nb-workers"] = nodes
     params["dirichlet-alpha"] = float(cfg.heterogeneity.alpha)
     params["nb-decl-byz"] = int(cfg.adversary.byzcount)
