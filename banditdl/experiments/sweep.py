@@ -1,125 +1,22 @@
 from __future__ import annotations
 
-import argparse
 from pathlib import Path
 
 import hydra
 import optuna
 import torch
+from hydra.core.hydra_config import HydraConfig
 from omegaconf import OmegaConf
 
 from banditdl.experiments.engine import run_dynamic, run_fixed
-
-
-def _repo_root():
-    """
-    Resolve repository root from this module path.
-
-    return: Path
-      Repository root.
-    """
-    return Path(__file__).resolve().parents[2]
-
-
-def _load_config(conf_dir, sweep_relative_path):
-    """
-    Load base Hydra config and merge sweep overrides.
-
-    Args:
-      conf_dir: Path
-        Hydra config directory.
-      sweep_relative_path: str
-        Sweep config path relative to conf directory.
-    return: DictConfig
-      Merged config with base defaults and sweep metadata.
-    """
-    sweep_path = conf_dir / sweep_relative_path
-    if not sweep_path.exists():
-        raise FileNotFoundError(f"Sweep config not found: {sweep_path}")
-    with hydra.initialize_config_dir(config_dir=str(conf_dir), version_base=None):
-        base_cfg = hydra.compose(config_name="config")
-    sweep_cfg = OmegaConf.load(sweep_path)
-    merged = OmegaConf.merge(base_cfg, sweep_cfg)
-    return merged
-
-
-def _resolve_output_dir(base_dir, output_dir_cfg):
-    """
-    Resolve output directory from config.
-
-    Args:
-      base_dir: Path
-        Repository root directory.
-      output_dir_cfg: str
-        Output directory from config.
-    return: Path
-      Absolute output path.
-    """
-    output_dir = Path(str(output_dir_cfg))
-    if output_dir.is_absolute():
-        return output_dir
-    return (base_dir / output_dir).resolve()
-
-
-def _sample_param(trial, param_name, spec):
-    """
-    Sample one parameter from Optuna search-space spec.
-
-    Args:
-      trial: Trial
-        Active Optuna trial.
-      param_name: str
-        Name/path of sampled parameter.
-      spec: Any
-        Parameter specification.
-    return: Any
-      Sampled value for the parameter.
-    """
-    if isinstance(spec, list):
-        return trial.suggest_categorical(param_name, spec)
-    if not isinstance(spec, dict):
-        raise ValueError(f"Invalid search space entry for '{param_name}': {spec}")
-
-    param_type = str(spec.get("type", "")).lower()
-    if param_type == "categorical":
-        choices = spec.get("choices")
-        if not isinstance(choices, list) or not choices:
-            raise ValueError(f"Categorical '{param_name}' must define non-empty choices")
-        return trial.suggest_categorical(param_name, choices)
-
-    if param_type == "float":
-        low = float(spec["low"])
-        high = float(spec["high"])
-        log_flag = bool(spec.get("log", False))
-        step = spec.get("step")
-        if step is None:
-            return trial.suggest_float(param_name, low, high, log=log_flag)
-        return trial.suggest_float(param_name, low, high, step=float(step), log=log_flag)
-
-    if param_type == "int":
-        low = int(spec["low"])
-        high = int(spec["high"])
-        log_flag = bool(spec.get("log", False))
-        step = int(spec.get("step", 1))
-        return trial.suggest_int(param_name, low, high, step=step, log=log_flag)
-
-    raise ValueError(f"Unsupported parameter type '{param_type}' for '{param_name}'")
-
-
-def _conditions_met(cfg, conditions):
-    if conditions is None:
-        return True
-    if not isinstance(conditions, dict) or not conditions:
-        raise ValueError("optuna.search_space 'when' must be a non-empty mapping")
-    for path, expected in conditions.items():
-        actual = OmegaConf.select(cfg, path)
-        if isinstance(expected, list):
-            if actual not in expected:
-                return False
-        else:
-            if actual != expected:
-                return False
-    return True
+from banditdl.utils.plot_sweep_base import (
+    build_axis_metadata,
+    enumerate_valid_param_dicts,
+    normalize_directions,
+    normalize_plot_modes,
+    plot_sweep,
+    trial_folder_name,
+)
 
 
 def _build_engine_params(cfg):
@@ -129,6 +26,7 @@ def _build_engine_params(cfg):
     Args:
       cfg: DictConfig
         Composed run config.
+
     return: tuple
       (engine_params, run_mode)
     """
@@ -142,7 +40,6 @@ def _build_engine_params(cfg):
     else:
         nb_neighbors = int(cfg.topology.degree)
 
-    # Build params from config groups
     params["dataset"] = cfg.dataset_nn.dataset
     params["model"] = cfg.dataset_nn.model
     params["nb-workers"] = nodes
@@ -157,22 +54,18 @@ def _build_engine_params(cfg):
     params["bandit-epsilon"] = float(cfg.topology.get("bandit_epsilon"))
     params["bandit-initial-value"] = float(cfg.topology.get("bandit_initial_value"))
     params["bandit-reward"] = cfg.topology.get("bandit_reward", "parameter_distance")
-    
-    # Add optimization parameters
+
     params["batch-size"] = int(cfg.optimization.get("batch_size"))
     params["loss"] = cfg.optimization.get("loss")
     params["weight-decay"] = float(cfg.optimization.get("weight_decay"))
     params["momentum-worker"] = float(cfg.optimization.get("momentum_worker"))
     params["nb-steps"] = int(cfg.optimization.get("nb_steps"))
-    
-    # Add aggregator parameters
+
     params["aggregator"] = cfg.aggregator.get("aggregator")
     params["pre-aggregator"] = cfg.aggregator.get("pre_aggregator")
     params["rag"] = bool(cfg.aggregator.get("rag"))
-    
-    # Add heterogeneity parameters
-    params["numb-labels"] = int(cfg.heterogeneity.get("numb_labels"))    
-    # Add evaluation parameters
+
+    params["numb-labels"] = int(cfg.heterogeneity.get("numb_labels"))
     params["evaluation-delta"] = int(cfg.evaluation.get("evaluation_delta"))
     byz_budget_raw = cfg.adversary.get("byzantine_budget")
     byz_budget = int(cfg.adversary.byzcount if byz_budget_raw is None else byz_budget_raw)
@@ -196,8 +89,9 @@ def _pick_device(cfg):
     Args:
       cfg: DictConfig
         Composed run config.
+
     return: str
-      Device string.
+      Torch device string.
     """
     configured = str(cfg.device)
     if configured and configured != "auto":
@@ -213,9 +107,10 @@ def _read_metric_file_max(metric_file):
 
     Args:
       metric_file: Path
-        Path to metric file.
+        Path to metric text file.
+
     return: float
-      Maximum validation accuracy observed in the trial.
+      Maximum metric observed in the file.
     """
     if not metric_file.exists():
         raise FileNotFoundError(f"Missing metric file: {metric_file}")
@@ -235,32 +130,55 @@ def _read_metric_file_max(metric_file):
     return max(metric_values)
 
 
-def _objective(trial, base_cfg, output_root, search_space):
+def _resolved_trial_params(trial):
     """
-    Run one Optuna trial and return validation objective.
+    Return effective trial parameters for grid-driven sweeps.
+
+    Args:
+      trial: Trial | FrozenTrial
+        Optuna trial object.
+
+    return: dict
+      Parameter mapping used for this trial.
+    """
+    if trial.params:
+        return dict(trial.params)
+    resolved = trial.user_attrs.get("resolved_params")
+    if isinstance(resolved, dict):
+        return dict(resolved)
+    return {}
+
+
+def _objective(trial, base_cfg, trials_root, axis_lookup, combos):
+    """
+    Execute one trial using fixed parameter assignments.
 
     Args:
       trial: Trial
-        Active Optuna trial.
+        Optuna trial instance.
       base_cfg: DictConfig
-        Base config merged with sweep metadata.
-      output_root: Path
-        Trial output root directory.
-      search_space: dict
-        Parameter path -> search space specification.
-    return: float
-      Trial objective value (best validation accuracy).
-    """
-    trial_cfg = OmegaConf.create(OmegaConf.to_container(base_cfg, resolve=False))
-    for param_path, spec in search_space.items():
-        if isinstance(spec, dict) and "when" in spec:
-            if not _conditions_met(trial_cfg, spec.get("when")):
-                continue
-            spec = {k: v for k, v in spec.items() if k != "when"}
-        sampled_value = _sample_param(trial, param_path, spec)
-        OmegaConf.update(trial_cfg, param_path, sampled_value, merge=False)
+        Base Hydra configuration.
+      trials_root: Path
+        Root folder storing per-trial artifacts.
+      axis_lookup: dict
+        Metadata mapping parameter paths to display attributes.
+      combos: list
+        Ordered list of parameter dictionaries for each trial index.
 
-    trial_result_dir = output_root / f"trial_{trial.number:04d}" / "results"
+    return: float
+      Validation accuracy objective.
+    """
+    trial_index = int(trial.number)
+    if trial_index >= len(combos):
+        raise IndexError(f"Trial index {trial_index} out of bounds for {len(combos)} combinations")
+    trial_params = dict(combos[trial_index])
+
+    trial_cfg = OmegaConf.create(OmegaConf.to_container(base_cfg, resolve=False))
+    for path, value in trial_params.items():
+        OmegaConf.update(trial_cfg, path, value, merge=False)
+
+    folder_name = trial_folder_name(trial_params, axis_lookup)
+    trial_result_dir = trials_root / folder_name / "results"
     trial_result_dir.mkdir(parents=True, exist_ok=True)
     params, run_mode = _build_engine_params(trial_cfg)
     seed_value = int(trial_cfg.seed) + int(trial.number)
@@ -275,25 +193,28 @@ def _objective(trial, base_cfg, output_root, search_space):
     trial.set_user_attr("validation_accuracy", validation_metric)
     trial.set_user_attr("result_dir", str(trial_result_dir))
     trial.set_user_attr("seed", seed_value)
+    trial.set_user_attr("resolved_params", trial_params)
     return validation_metric
 
 
 def _run_best_trial_test_evaluation(best_trial, base_cfg, output_root):
     """
-    Re-run the best trial and store final test accuracy.
+    Re-run the best trial with test evaluation enabled.
 
     Args:
       best_trial: FrozenTrial
-        Best trial selected by validation accuracy.
+        Optuna best trial struct.
       base_cfg: DictConfig
-        Base config merged with sweep metadata.
+        Base Hydra configuration.
       output_root: Path
-        Optuna output root directory.
+        Hydra run output directory.
+
     return: float
-      Final test accuracy of the re-run best trial.
+      Test accuracy from the re-run.
     """
+    best_params = _resolved_trial_params(best_trial)
     best_cfg = OmegaConf.create(OmegaConf.to_container(base_cfg, resolve=False))
-    for param_path, sampled_value in best_trial.params.items():
+    for param_path, sampled_value in best_params.items():
         OmegaConf.update(best_cfg, param_path, sampled_value, merge=False)
 
     best_result_dir = output_root / "best_trial_test_eval" / "results"
@@ -312,44 +233,56 @@ def _run_best_trial_test_evaluation(best_trial, base_cfg, output_root):
     return test_accuracy
 
 
-def _parse_args():
+def _metrics_list_from_cfg(cfg):
     """
-    Parse CLI arguments.
+    Normalize plot metric selections from Hydra config.
 
-    return: Namespace
-      Parsed argument namespace.
+    Args:
+      cfg: DictConfig
+        User configuration object.
+
+    return: list
+      Metric stems for sweep plots.
     """
-    parser = argparse.ArgumentParser(description="Optuna sweep runner for BanditDL.")
-    parser.add_argument("--sweep-config", default="optuna/default.yaml", help="Path under conf/ to sweep yaml file.")
-    return parser.parse_args()
+    raw = cfg.get("plot_metrics")
+    if raw is None:
+        return []
+    return list(OmegaConf.to_container(raw, resolve=True))
 
 
-def main():
+@hydra.main(version_base=None, config_path="../../conf", config_name="sweep")
+def main(cfg):
     """
-    Launch Optuna sweep from Hydra defaults and sweep override config.
+    Launch categorical grid sweep with Optuna bookkeeping and sweep plots.
     """
-    args = _parse_args()
-    repo_root = _repo_root()
-    conf_dir = repo_root / "conf"
-    cfg = _load_config(conf_dir, args.sweep_config)
+    output_root = Path(HydraConfig.get().runtime.output_dir)
+    trials_root = output_root / "trials"
+    trials_root.mkdir(parents=True, exist_ok=True)
 
     if "optuna" not in cfg:
-        raise ValueError("Missing 'optuna' section in sweep config")
+        raise ValueError("Missing 'optuna' section in Hydra config")
     optuna_cfg = cfg.optuna
     if "search_space" not in optuna_cfg:
-        raise ValueError("Missing 'optuna.search_space' in sweep config")
+        raise ValueError("Missing 'optuna.search_space' in Hydra config")
 
     search_space = OmegaConf.to_container(optuna_cfg.search_space, resolve=True)
     if not isinstance(search_space, dict) or not search_space:
         raise ValueError("optuna.search_space must be a non-empty mapping")
 
-    output_root = _resolve_output_dir(repo_root, optuna_cfg.output_dir)
-    output_root.mkdir(parents=True, exist_ok=True)
+    combos = enumerate_valid_param_dicts(cfg, search_space)
+    if not combos:
+        raise ValueError(
+            "No categorical grid combinations found. Use categorical sweeps or add list-style search_space entries."
+        )
 
-    study = optuna.create_study(direction=str(optuna_cfg.direction))
-    trials_count = int(optuna_cfg.n_trials)
-    print(f"[optuna] running {trials_count} trials | metric=validation_accuracy | output={output_root}")
-    study.optimize(lambda trial: _objective(trial, cfg, output_root, search_space), n_trials=trials_count)
+    _, axis_meta = build_axis_metadata(search_space)
+    axis_lookup = {path: axis_meta.get(path, {}) for path in search_space.keys()}
+
+    direction = str(optuna_cfg.direction)
+    study = optuna.create_study(direction=direction)
+    total_trials = len(combos)
+    print(f"[optuna] grid trials={total_trials} | metric=validation_accuracy | trials_dir={trials_root}")
+    study.optimize(lambda trial: _objective(trial, cfg, trials_root, axis_lookup, combos), n_trials=total_trials)
 
     best = study.best_trial
     best_dir = best.user_attrs.get("result_dir")
@@ -358,12 +291,29 @@ def main():
     if best_dir:
         print(f"[optuna] best result directory: {best_dir}")
     print("[optuna] best parameters:")
-    for name, value in best.params.items():
+    for name, value in _resolved_trial_params(best).items():
         print(f"  - {name}: {value}")
 
     final_test_accuracy = _run_best_trial_test_evaluation(best, cfg, output_root)
     print(f"[optuna] best trial final test directory: {output_root / 'best_trial_test_eval' / 'results'}")
     print(f"[optuna] best trial final test_accuracy: {final_test_accuracy:.6f}")
+
+    metrics_list = _metrics_list_from_cfg(cfg)
+    plot_modes = normalize_plot_modes(cfg.plot_mode)
+    plot_directions = normalize_directions(cfg.get("direction"))
+    sweep_plot_root = output_root / "sweep_artifacts"
+    plot_sweep(
+        plot_modes,
+        plot_directions,
+        trials_root,
+        study,
+        search_space,
+        metrics_list,
+        sweep_plot_root,
+    )
+    print(
+        f"[optuna] sweep plots written to: {sweep_plot_root} | modes={plot_modes} directions={plot_directions}"
+    )
 
 
 if __name__ == "__main__":

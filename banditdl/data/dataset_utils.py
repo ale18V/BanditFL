@@ -40,5 +40,25 @@ def draw_indices(samples_distribution, indices_per_label, nb_workers):
             samples_for_worker = int(worker_proportion * number_samples_label)
             worker_samples[worker].extend(indices_per_label[label][last_sample:last_sample+samples_for_worker])
             last_sample = samples_for_worker
+                
+    #     # last_sample += samples_for_worker
+    #     # Integer truncation can leave samples unassigned; distribute remainder round-robin.
+    #     remainder = indices_per_label[label][last_sample:]
+    #     for offset, idx in enumerate(remainder):
+    #         worker_samples[offset % nb_workers].append(idx)
+
+    # # With many workers and skewed proportions, some workers can still end up with no indices
+    # # (e.g. int proportions and remainder never land on their index). Steal one sample at a time
+    # # from a worker that can spare it until no empty worker remains, when possible.
+    # while True:
+    #     empty_workers = [w for w in range(nb_workers) if len(worker_samples[w]) == 0]
+    #     if not empty_workers:
+    #         break
+    #     donors = [w for w in range(nb_workers) if len(worker_samples[w]) > 1]
+    #     if not donors:
+    #         break
+    #     donor = max(donors, key=lambda w: len(worker_samples[w]))
+    #     moved = worker_samples[donor].pop()
+    #     worker_samples[empty_workers[0]].append(moved)
 
     return worker_samples
