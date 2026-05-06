@@ -1,5 +1,5 @@
 defaults:
-  - local: mnist
+  - profile: mnist
   - topology: dynamic_uniform
   - adversary: none
   - _self_
@@ -10,6 +10,6 @@ device: "cpu"
 
 hydra:
   run:
-    dir: .hydra_runs_override/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    dir: .hydra_runs/${now:%Y-%m-%d}/${now:%H-%M-%S}
   sweep:
-    dir: .hydra_multirun_override/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    dir: .hydra_multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
