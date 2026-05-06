@@ -10,7 +10,7 @@ class DynamicWorker(HonestWorker):
         self,
         worker_id,
         data_loader,
-        data_loader_test,
+        data_loader_validation,
         nb_workers,
         nb_byz,
         nb_real_byz,
@@ -40,7 +40,7 @@ class DynamicWorker(HonestWorker):
         super().__init__(
             worker_id,
             data_loader,
-            data_loader_test,
+            data_loader_validation,
             nb_workers,
             nb_byz,
             nb_real_byz,

@@ -60,7 +60,13 @@ class ByzantineWorker(BaseWorker):
         vectors = self.byzantine_attack.generate_byzantine_vectors(honest_vectors, None, current_step)
         return vectors[0] if len(vectors) > 0 else None
 
-    def compute_accuracy(self):
+    def compute_validation_accuracy(self):
+        return None
+
+    def compute_validation_loss(self):
+        return None
+
+    def compute_train_loss(self):
         return None
 
 
@@ -95,5 +101,11 @@ class DecByzantineWorker(BaseWorker):
         )
         return byzantine_vector.squeeze(0)
 
-    def compute_accuracy(self):
+    def compute_validation_accuracy(self):
+        return None
+
+    def compute_validation_loss(self):
+        return None
+
+    def compute_train_loss(self):
         return None

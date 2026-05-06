@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import pathlib
 from typing import Any
-
+import torch
 import hydra
+from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
-
 from banditdl.experiments.engine import run_dynamic, run_fixed
+from banditdl.utils.plotting import plot_all
 
 
 def _run_name(cfg: DictConfig, byzantine_budget: int, nb_neighbors: int) -> str:
@@ -45,6 +46,7 @@ def main(cfg: DictConfig) -> None:
 
     # Build one concrete training run from config.
     params: dict[str, Any] = dict(params_common)
+    print("\n"+ OmegaConf.to_yaml(cfg, resolve=True) + "\n")
     nodes = int(cfg.topology.nodes)
     if cfg.topology.mode == "dynamic":
         sampling = float(cfg.topology.sampling)
@@ -80,17 +82,15 @@ def main(cfg: DictConfig) -> None:
         params["sampling-ratio"] = float(cfg.topology.sampling)
 
     if not cfg.device or cfg.device == "auto":
-        import torch
-
         cfg.device = torch.cuda.is_available() and "cuda" or "cpu"
 
     method = cfg.topology.get("method")
     if method is not None:
         params["method"] = method
 
-    results_root = pathlib.Path(str(cfg.result_directory))
+    output_dir = pathlib.Path(HydraConfig.get().runtime.output_dir)
+    result_dir = output_dir / "results"
     run_name = _run_name(cfg, byzantine_budget, nb_neighbors)
-    result_dir = results_root / f"{run_name}-seed_{cfg.seed}"
     if cfg.topology.mode == "dynamic":
         run_dynamic(
             params=params,
@@ -105,6 +105,8 @@ def main(cfg: DictConfig) -> None:
             seed=int(cfg.seed),
             device=str(cfg.device),
         )
+    plots_dir = output_dir / "plots"
+    plot_all(run_dir=result_dir, plots_dir=plots_dir, run_label=run_name)
 
 
 if __name__ == "__main__":

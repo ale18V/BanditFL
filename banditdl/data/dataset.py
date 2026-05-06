@@ -174,9 +174,9 @@ class Dataset:
         self.dataset_dict[worker_id] = torch.utils.data.DataLoader(dataset_modified, batch_size=batch_size, shuffle=True)
 
 # ---------------------------------------------------------------------------- #
-def make_train_test_datasets(dataset, heterogeneity=False, numb_labels=None, distinct_datasets=False, gamma_similarity=None, alpha_dirichlet=None,
-    nb_datapoints=None, honest_workers=None, train_batch=None, test_batch=None):
-  """ Helper to make new instance of train and test datasets.
+def make_train_validation_test_datasets(dataset, heterogeneity=False, numb_labels=None, distinct_datasets=False, gamma_similarity=None, alpha_dirichlet=None,
+    nb_datapoints=None, honest_workers=None, train_batch=None, test_batch=None, validation_ratio=0.5, split_seed=0):
+  """ Helper to make new instance of train, validation and test datasets.
   Args:
     dataset             Case-sensitive dataset name
     heterogeneity       Boolean that is true in heterogeneous setting
@@ -187,19 +187,57 @@ def make_train_test_datasets(dataset, heterogeneity=False, numb_labels=None, dis
     nb_datapoints       Number of datapoints per honest worker in case of distinct datasets
     honest_workers      Number of honest workers in the system
     train_batch         Training batch size
-    test_batch          Testing batch size
+    test_batch          Validation/test batch size
+    validation_ratio    Fraction of the official test split to use as validation split
+    split_seed          Seed used for deterministic validation/test split
   Returns:
-    Dictionary of training datasets for honest workers and data loader for test dataset
+    (Dictionary of training datasets for honest workers, data loader for validation dataset, data loader for held-out test dataset)
   """
   # Make the training dataset
   trainset = Dataset(dataset, heterogeneity=heterogeneity, numb_labels=numb_labels,
                      distinct_datasets=distinct_datasets, gamma_similarity=gamma_similarity, alpha_dirichlet=alpha_dirichlet,
                      nb_datapoints=nb_datapoints, honest_workers=honest_workers, batch_size=train_batch)
 
-  # Make the testing dataset
-  dataset_test = getattr(torchvision.datasets, dict_names[dataset])(root=get_default_root(), train=False, download=True,
-                                                                              transform=transforms[dataset][1])
+  # Build validation/test splits from the official train=False split.
+  dataset_eval_full = getattr(torchvision.datasets, dict_names[dataset])(root=get_default_root(), train=False, download=True,
+                                                                          transform=transforms[dataset][1])
+  total_eval_samples = len(dataset_eval_full)
+  if total_eval_samples < 2:
+    raise ValueError("Need at least 2 samples to create validation/test splits")
+  validation_size = int(round(total_eval_samples * validation_ratio))
+  validation_size = min(max(validation_size, 1), total_eval_samples - 1)
+  test_size = total_eval_samples - validation_size
+  generator = torch.Generator().manual_seed(split_seed)
+  dataset_validation, dataset_test = torch.utils.data.random_split(dataset_eval_full, [validation_size, test_size], generator=generator)
+  data_loader_validation = torch.utils.data.DataLoader(dataset_validation, batch_size=test_batch, shuffle=False)
   data_loader_test = torch.utils.data.DataLoader(dataset_test, batch_size=test_batch, shuffle=False)
 
   # Return the data loaders
-  return trainset.dataset_dict, data_loader_test
+  return trainset.dataset_dict, data_loader_validation, data_loader_test
+
+
+def make_train_test_datasets(dataset, heterogeneity=False, numb_labels=None, distinct_datasets=False, gamma_similarity=None, alpha_dirichlet=None,
+    nb_datapoints=None, honest_workers=None, train_batch=None, test_batch=None, validation_ratio=0.5, split_seed=0):
+  """ Backward-compatible helper returning train datasets and validation loader.
+  Args:
+    dataset             Case-sensitive dataset name
+    heterogeneity       Boolean that is true in heterogeneous setting
+    numb_labels         Number of labels of dataset
+    distinct_datasets   Boolean that is true in setting where honest workers must have distinct datasets (e.g., privacy setting)
+    gamma_similarity    Float for distributing the datasets among honest workers
+    alpha_dirichlet     Value of parameter alpha for dirichlet distribution
+    nb_datapoints       Number of datapoints per honest worker in case of distinct datasets
+    honest_workers      Number of honest workers in the system
+    train_batch         Training batch size
+    test_batch          Validation/test batch size
+    validation_ratio    Fraction of the official test split to use as validation split
+    split_seed          Seed used for deterministic validation/test split
+  Returns:
+    (Dictionary of training datasets for honest workers, data loader for validation dataset)
+  """
+  trainset, data_loader_validation, _ = make_train_validation_test_datasets(
+    dataset=dataset, heterogeneity=heterogeneity, numb_labels=numb_labels, distinct_datasets=distinct_datasets,
+    gamma_similarity=gamma_similarity, alpha_dirichlet=alpha_dirichlet, nb_datapoints=nb_datapoints,
+    honest_workers=honest_workers, train_batch=train_batch, test_batch=test_batch,
+    validation_ratio=validation_ratio, split_seed=split_seed)
+  return trainset, data_loader_validation

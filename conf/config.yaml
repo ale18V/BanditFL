@@ -3,14 +3,13 @@ defaults:
   - topology: dynamic_uniform
   - adversary: none
   - _self_
+  - override
 
-seed: 0
-device: auto
-result_directory: results_${local.dataset}/results-data-${local.dataset}
-plot_directory: results_${local.dataset}/results-plot-${local.dataset}
+seed: 123
+device: "cpu"
 
 hydra:
   run:
-    dir: .hydra_runs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    dir: .hydra_runs_override/${now:%Y-%m-%d}/${now:%H-%M-%S}
   sweep:
-    dir: .hydra_multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    dir: .hydra_multirun_override/${now:%Y-%m-%d}/${now:%H-%M-%S}

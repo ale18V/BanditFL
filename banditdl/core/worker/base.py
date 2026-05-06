@@ -27,8 +27,16 @@ class BaseWorker(ABC):
         """Return weights/message to neighbors, optionally using context."""
 
     @abstractmethod
-    def compute_accuracy(self):
-        """Return worker accuracy when meaningful, else None."""
+    def compute_validation_accuracy(self):
+        """Return worker validation accuracy when meaningful, else None."""
+
+    @abstractmethod
+    def compute_validation_loss(self):
+        """Return worker validation loss when meaningful, else None."""
+
+    @abstractmethod
+    def compute_train_loss(self):
+        """Return worker train loss when meaningful, else None."""
 
 
 class HonestWorker(BaseWorker):
@@ -38,7 +46,7 @@ class HonestWorker(BaseWorker):
         self,
         worker_id,
         data_loader,
-        data_loader_test,
+        data_loader_validation,
         nb_workers,
         nb_byz,
         nb_real_byz,
@@ -64,8 +72,8 @@ class HonestWorker(BaseWorker):
         self.rag = rag
         self.b_hat = b_hat
 
-        self.loaders = {"train": data_loader, "test": data_loader_test}
-        self.iterators = {"train": iter(data_loader), "test": iter(data_loader_test)}
+        self.loaders = {"train": data_loader, "validation": data_loader_validation}
+        self.iterators = {"train": iter(data_loader), "validation": iter(data_loader_validation)}
 
         self.initial_learning_rate = self.current_learning_rate = learning_rate
         self.learning_rate_decay = learning_rate_decay
@@ -158,17 +166,43 @@ class HonestWorker(BaseWorker):
         return flatten(self.model.parameters())
 
     @torch.no_grad()
-    def compute_accuracy(self):
+    def compute_accuracy_on_loader(self, data_loader):
         self.model.eval()
         total = 0
         correct = 0
-        for inputs, targets in self.loaders["test"]:
+        for inputs, targets in data_loader:
             inputs, targets = inputs.to(self.device), targets.to(self.device)
             outputs = self.model(inputs)
             _, predicted = torch.max(outputs.data, 1)
             total += targets.size(0)
             correct += (predicted == targets).sum().item()
         return correct / total
+
+    @torch.no_grad()
+    def compute_validation_accuracy(self):
+        return self.compute_accuracy_on_loader(self.loaders["validation"])
+
+    @torch.no_grad()
+    def compute_loss_on_loader(self, data_loader):
+        self.model.eval()
+        total = 0
+        total_loss = 0.0
+        for inputs, targets in data_loader:
+            inputs, targets = inputs.to(self.device), targets.to(self.device)
+            outputs = self.model(inputs)
+            loss_value = self.loss(outputs, targets)
+            batch_size = targets.size(0)
+            total += batch_size
+            total_loss += float(loss_value.item()) * batch_size
+        return total_loss / total
+
+    @torch.no_grad()
+    def compute_validation_loss(self):
+        return self.compute_loss_on_loader(self.loaders["validation"])
+
+    @torch.no_grad()
+    def compute_train_loss(self):
+        return self.compute_loss_on_loader(self.loaders["train"])
 
     def set_gradient(self, gradient):
         gradient = unflatten(gradient, self.model_shapes)

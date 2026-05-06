@@ -28,9 +28,51 @@ uv run -m banditdl local=mnist topology=dynamic_uniform topology.nodes=100 topol
 
 Runs print lightweight progress to stdout: start metadata, result directory, periodic decentralized-learning rounds, evaluation accuracy when available, and completion.
 
+## Choosing hydra config
+
+Create a config named `override.yaml` with path `conf/override.yaml` that will be the local override of `config.yaml`, and it will be in the `.gitignore` so it won't be pushed. `override.yaml` must not be like `config.yaml`, instead its template is below:
+
+```
+defaults:
+  - override local: mnist
+  - override topology: dynamic_uniform
+  - override adversary: none
+
+seed: 0
+device: "mps"
+
+hydra:
+  run:
+    dir: .hydra_runs_override/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: .hydra_multirun_override/${now:%Y-%m-%d}/${now:%H-%M-%S}
+```
+
 ## Run Sweeps (Hydra Multirun)
 
 Hydra does orchestration. The custom in-repo scheduler is no longer the main path.
+
+## Run Sweeps (Optuna)
+
+Use the Optuna launcher when you want Bayesian/randomized sweeps instead of Cartesian Hydra multirun:
+
+```bash
+uv run python -m banditdl.experiments.hyperparam_opt
+```
+
+Behavior:
+- Starts from `conf/config.yaml` defaults.
+- Loads `conf/optuna/default.yaml` and applies only sweep-target attributes listed in `optuna.search_space`.
+- Runs one training trial per Optuna trial.
+- Uses validation accuracy from each trial `results/validation` file as objective and selects the best trial by that metric.
+- Re-runs the best trial once with a held-out test split and writes final test accuracy in `results/test`.
+
+To customize the sweep config file:
+
+```bash
+uv run python -m banditdl.experiments.hyperparam_opt \
+  --sweep-config optuna/default.yaml
+```
 
 ### Ad-hoc Sweep From CLI
 
@@ -77,8 +119,6 @@ uv run -m banditdl --cfg job
 - `adversary`: Byzantine/adversarial setup config group.
 - `seed`: random seed. Use comma-separated values under `-m` for sweeps.
 - `device`: `auto`, `cpu`, or a torch device string such as `cuda`.
-- `result_directory`: root directory for saved run artifacts.
-- `plot_directory`: output directory convention for plots. Plotting itself uses `scripts/plot_results.py`.
 
 ### Local Training Config
 
@@ -182,41 +222,57 @@ uv run -m banditdl local=mnist topology=my_bandit adversary=none
 
 ## Plot Saved Results
 
-Experiments write results first. Plotting is a standalone offline step, kept out of the Python package tree.
+Each Hydra run writes artifacts directly in its run folder:
+- `<hydra_run>/results/`: raw metrics and arrays (`validation`, `validation_worst`, `test` (optional), `*.npy`).
+- `<hydra_run>/plots/`: auto-generated plots for all supported metrics.
+
+Example run folder:
+
+```text
+.hydra_runs_override/2026-05-05/12-26-01/
+  .hydra/
+  hydra_run.log
+  results/
+  plots/
+```
+
+Plotting logic now lives in `banditdl/utils/plotting.py`. The script `scripts/plot_results.py` remains as a thin offline CLI wrapper around that helper.
 
 Plot one run:
 
 ```bash
 uv run python scripts/plot_results.py \
-  results_mnist/results-data-mnist-iclr/<run-dir> \
-  -o plots/example.png
+  .hydra_runs_override/<date>/<time>/results \
+  -o .hydra_runs_override/<date>/<time>/plots/example.png
 ```
 
 Compare multiple runs:
 
 ```bash
 uv run python scripts/plot_results.py \
-  results_mnist/results-data-mnist-iclr/<run-a> \
-  results_mnist/results-data-mnist-iclr/<run-b> \
+  .hydra_runs_override/<date>/<time-a>/results \
+  .hydra_runs_override/<date>/<time-b>/results \
   --label uniform \
   --label bandit \
-  -o plots/comparison.png
+  -o comparison.png
 ```
 
 Aggregate seed runs:
 
 ```bash
 uv run python scripts/plot_results.py \
-  results_mnist/results-data-mnist-iclr/mnist-*-seed_* \
+  .hydra_runs_override/<date>/*/results \
   --aggregate \
   --label "uniform mean" \
-  -o plots/uniform_seed_mean.png
+  -o uniform_seed_mean.png
 ```
 
 Useful options:
 - `--metric accuracies`: plot from `accuracies.npy` (default).
-- `--metric eval`: plot average accuracy from `eval`.
-- `--metric eval_worst`: plot worst-worker accuracy from `eval_worst`.
+- `--metric validation`: plot average accuracy from `validation`.
+- `--metric validation_worst`: plot worst-worker accuracy from `validation_worst`.
+- `--metric test`: plot held-out test accuracy from `test` (single final point when available).
+- `--metric eval|eval_worst`: legacy aliases for older run folders.
 - `--metric regret`: plot regret against the best fixed neighbor subset in hindsight.
 - `--metric normalized_regret`: plot regret divided by oracle reward.
 - `--metric reward_algorithm|reward_oracle`: plot cumulative reward curves.
@@ -267,7 +323,7 @@ experiments.engine::run_dynamic]
     attacks + summations]
 
     I1 --> M[Per-run result directory
-    eval, eval_worst, logs]
+    validation, validation_worst, logs]
     I2 --> M
 ```
 
